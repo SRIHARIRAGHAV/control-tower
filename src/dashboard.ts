@@ -129,7 +129,7 @@ export function initDashboard() {'use strict';
   // STATE + HELPERS
   // =====================================================================
   var S = {
-    view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null, wkOpen: {},
+    view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null, wkOpen: {}, page: null,
     drawer: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
     msgs: [{ who: 'ai', text: 'Good morning, Vishva. 4 critical risks need action (≈ ₹45 L at stake), 5 items have been pending over a week, and 6 risks are coming in the next 30 days. Pick a topic below or type your own.' }]
   };
@@ -213,14 +213,17 @@ export function initDashboard() {'use strict';
   // SIDEBAR
   // =====================================================================
   function renderNav() {
-    var h = '';
+    var h = '', pageNav = { weekly: 'rep', board: 'rep', budget: 'fin', spend: 'fin', register: 'rm', mitig: 'rm', ana: 'ana', perf: 'perf' };
+    var selected = S.page ? pageNav[S.page] : 'dash';
     NAV.forEach(function (n) {
-      var on = n.k === 'dash';
+      var on = n.k === selected;
       h += '<button class="nav' + (on ? ' on' : '') + '" data-nav="' + n.k + '"' + (n.sub ? ' aria-expanded="' + !!S.nav[n.k] + '"' : '') + ' title="' + n.label + '">' +
         '<svg class="i" viewBox="0 0 24 24">' + n.icon + '</svg><span class="lbl">' + n.label + '</span>' +
         (n.sub ? '<svg class="i chev" viewBox="0 0 24 24" style="width:16px"><path d="m6 9 6 6 6-6"/></svg>' : '') + '</button>';
       if (n.sub && S.nav[n.k]) h += '<div class="sub">' + n.sub.map(function (x, i) {
-        return '<a href="' + x[1] + '"' + (on && i === 0 ? ' class="on"' : '') + '>' + x[0] + '</a>';
+        var page = { 'Weekly brief': 'weekly', 'Board pack': 'board', 'Budget': 'budget', 'Spend': 'spend', 'Risk register': 'register', 'Mitigations': 'mitig' }[x[0]];
+        var active = (S.page && S.page === page) || (!S.page && n.k === 'dash' && i === 0);
+        return '<a href="' + x[1] + '"' + (active ? ' class="on"' : '') + '>' + x[0] + '</a>';
       }).join('') + '</div>';
     });
     document.getElementById('menu').innerHTML = h;
@@ -245,6 +248,8 @@ export function initDashboard() {'use strict';
   function stakeOpen() { return criticalOpen().reduce(function (a, r) { return a + (r.stake || 0); }, 0); }
 
   function render() {
+    if (S.page) { renderFullPage(); return; }
+    app.classList.remove('page-view');
     var V = VIEWS[S.view];
     var critOpen = criticalOpen(), off = offTrackProjects(), stuck = stuckItems();
     var stake = stakeOpen(), score = healthScore();
@@ -559,7 +564,7 @@ export function initDashboard() {'use strict';
   // POPOVERS
   // =====================================================================
   function renderPops() {
-    ['filter', 'notif', 'cal', 'view'].forEach(function (k) {
+    ['filter', 'notif', 'cal', 'view', 'profile'].forEach(function (k) {
       var el = document.getElementById('pop-' + k);
       if (S.pop !== k) { el.hidden = true; el.innerHTML = ''; return; }
       el.hidden = false;
@@ -591,9 +596,15 @@ export function initDashboard() {'use strict';
         h = '<h4>Compare against</h4>' + Object.keys(VIEWS).map(function (v) {
           return '<button class="opt' + (S.view === v ? ' on' : '') + '" data-view="' + v + '">Last ' + VIEWS[v].label + '<span>' + (S.view === v ? '✓' : '') + '</span></button>';
         }).join('');
+      } else if (k === 'profile') {
+        h = '<div class="profile-summary"><span class="avatar">V</span><div><b>Vishva</b><small>Dashboard user</small></div></div>' +
+          '<button class="opt" data-page="help"><span>Help center</span><span aria-hidden="true">?</span></button>' +
+          '<button class="opt" data-page="settings"><span>Settings</span><span aria-hidden="true">⚙</span></button>';
       }
       el.innerHTML = h;
     });
+    var profileButton = document.querySelector('[data-pop="profile"]');
+    if (profileButton) profileButton.setAttribute('aria-expanded', S.pop === 'profile');
     var off = ['c', 'h', 'm'].filter(function (l) { return !S.sev[l]; }).length +
       ['client', 'internal', 'cross'].filter(function (t) { return !S.types[t]; }).length;
     var fb = document.getElementById('fbadge'); fb.hidden = !off; fb.textContent = off ? off + ' off' : '';
@@ -1168,6 +1179,7 @@ export function initDashboard() {'use strict';
     if ((a = t.getAttribute('data-client'))) { S.drawer = { type: 'client', client: a }; S.open = null; renderDrawer(); return; }
     if ((a = t.getAttribute('data-view'))) { S.view = a; S.pop = null; renderPops(); render(); return; }
     if ((a = t.getAttribute('data-nav'))) {
+      if (a === 'dash') { openPage('dash'); return; }
       if (NAV.filter(function (n) { return n.k === a; })[0].sub) { S.nav[a] = !S.nav[a]; renderNav(); }
       else toast(t.textContent.trim() + ' is not part of this prototype');
       return;
@@ -1249,7 +1261,7 @@ export function initDashboard() {'use strict';
       (lvl ? '<span class="pill ' + lvl + '">' + (LEVEL[lvl] || lvl) + '</span>' : '') + '</div>' +
       (body ? '<div style="margin-top:6px">' + esc(body) + '</div>' : '') + (meta ? '<small class="muted" style="display:block;margin-top:4px">' + esc(meta) + '</small>' : '') + '</div>';
   }
-  function textBox(t) { return '<div class="proj" style="padding:14px;white-space:pre-wrap">' + esc(t) + '</div><button class="btn" data-copy="' + esc(t).replace(/\n/g, '&#10;') + '" style="margin-top:10px">Copy to clipboard</button>'; }
+  function textBox(t) { return '<div class="proj full-text"><div style="white-space:pre-wrap">' + esc(t) + '</div><button class="btn" data-copy="' + esc(t).replace(/\n/g, '&#10;') + '">Copy to clipboard</button></div>'; }
   function infoPage(k) {
     var R = ALL().slice().sort(bySev), h = '', title, sub;
     if (k === 'weekly') { title = 'Weekly brief'; sub = 'Health ' + healthScore() + '/100 · ' + criticalOpen().length + ' critical need action'; h = textBox(PROMPTS[0][1]() + '\n\nCritical:\n' + PROMPTS[1][1]()); }
@@ -1267,16 +1279,28 @@ export function initDashboard() {'use strict';
       h = DEPTS.map(function (d) { var l = ALL().filter(function (r) { return r.dept === d.name; }); return irow(d.name, worst(l), l.length + ' risks · ' + PENDING.filter(function (p) { return p.dept === d.name; }).length + ' pending too long', 'Lead: ' + d.lead); }).join('');
     }
     else if (k === 'help') {
-      title = 'Help center'; sub = 'Keyboard and remote control';
-      h = [['← ↑ → ↓', 'Move between cards and buttons'], ['Enter / OK', 'Open the selected card'], ['Esc / Back', 'Close drawer, menu or chat'], ['1 · 2 · 3', 'View: 12 hours · 7 days · 30 days'], ['R', 'Refresh now'], ['A', 'Auto-refresh on/off'], ['F · N · C', 'Filter · Notifications · Calendar'], ['/', 'Search'], ['M', 'Collapse or expand the sidebar'], ['?', 'Open this help']].map(function (x) { return irow(x[0], '', x[1]); }).join('');
+      title = 'Help center'; sub = 'Guides and shortcuts for using Control Tower';
+      h = '<section class="card help-intro"><h3>Welcome to Control Tower</h3><p>Use the dashboard to review delivery health, prioritize risks, and understand what needs action. Select a section in the left navigation to open its full page.</p><div class="help-actions"><button class="btn" data-page="register">Open risk register</button><button class="btn2" data-act="chat">Ask the AI assistant</button></div></section>' +
+        '<section class="help-grid"><article class="card"><h3>Getting started</h3><ol><li>Start with the health and critical-risk cards on Dashboard.</li><li>Open a risk to review its cause, impact, owner, and recommended action.</li><li>Use the search and filter controls to narrow the dashboard.</li><li>Open Reports, Finance, RM, Analytics, or Performance for a focused full-page view.</li></ol></article>' +
+        '<article class="card"><h3>Keyboard shortcuts</h3><div class="help-shortcuts">' + [['← ↑ → ↓', 'Move focus'], ['Enter / Space', 'Open the focused control'], ['Esc', 'Close a menu or panel'], ['1 · 2 · 3', 'Compare 12 hours, 7 days, or 30 days'], ['R', 'Refresh the dashboard'], ['A', 'Toggle auto-refresh'], ['F · N · C', 'Open filters, notifications, or calendar'], ['/', 'Focus search'], ['M', 'Collapse or expand the sidebar'], ['?', 'Open Help center']].map(function (x) { return '<div><kbd>' + esc(x[0]) + '</kbd><span>' + esc(x[1]) + '</span></div>'; }).join('') + '</div></article></section>' +
+        '<section class="help-grid"><article class="card"><h3>Frequently asked questions</h3><details><summary>How do I find a project or risk?</summary><p>Use the search field in the top bar. Results update on the dashboard as you type.</p></details><details><summary>What do the risk colors mean?</summary><p>Critical risks need action now, high risks need attention this week, and moderate risks should be watched.</p></details><details><summary>How do I review a mitigation?</summary><p>Open Mitigations from RM in the left navigation to see the recommended action and owner for each risk.</p></details></article>' +
+        '<article class="card"><h3>Need more help?</h3><p>Ask the built-in AI assistant about a project, department, client, or critical risk. It uses the dashboard information currently available in this workspace.</p><button class="btn" data-act="chat" style="margin-top:12px">Open AI assistant</button></article></section>';
     }
     else if (k === 'settings') {
-      title = 'Settings'; sub = 'Display and refresh';
-      h = '<div class="proj" style="padding:14px"><b>Auto-refresh</b><div style="display:flex;gap:8px;margin-top:8px"><button class="btn2" data-auto="toggle">' + (S.auto ? 'On · turn off' : 'Off · turn on') + '</button>' +
-        [15, 30, 60].map(function (s) { return '<button class="btn2" data-every="' + s + '"' + (S.every === s ? ' style="border-color:var(--accent);font-weight:700"' : '') + '>' + s + ' s</button>'; }).join('') + '</div></div>' +
-        '<div class="proj" style="padding:14px"><b>Display</b><div style="display:flex;gap:8px;margin-top:8px"><button class="btn2" data-act="collapse">Collapse sidebar</button><button class="btn2" data-sev="all">Reset filters</button><button class="btn2" data-refresh>Refresh now</button></div></div>';
+      title = 'Settings'; sub = 'Manage dashboard refresh, comparison, and display preferences';
+      h = '<section class="settings-grid"><article class="card"><h3>Data refresh</h3><p class="muted">Choose whether this dashboard refreshes automatically.</p><div class="settings-actions"><button class="btn2" data-auto="toggle">' + (S.auto ? 'Auto-refresh is on · turn off' : 'Auto-refresh is off · turn on') + '</button>' +
+        [15, 30, 60].map(function (s) { return '<button class="btn2' + (S.every === s ? ' selected' : '') + '" data-every="' + s + '">' + s + ' seconds</button>'; }).join('') + '</div><small class="muted">Refresh interval: ' + S.every + ' seconds</small></article>' +
+        '<article class="card"><h3>Comparison period</h3><p class="muted">Choose the time period used to compare dashboard metrics.</p><div class="settings-actions">' + Object.keys(VIEWS).map(function (v) { return '<button class="btn2' + (S.view === v ? ' selected' : '') + '" data-view="' + v + '">Last ' + esc(VIEWS[v].label) + (S.view === v ? ' · selected' : '') + '</button>'; }).join('') + '</div></article>' +
+        '<article class="card"><h3>Display and filters</h3><p class="muted">Adjust the navigation and restore the default risk filters.</p><div class="settings-actions"><button class="btn2" data-act="collapse">Toggle sidebar width</button><button class="btn2" data-sev="all">Reset all risk filters</button><button class="btn2" data-refresh>Refresh now</button></div></article>' +
+        '<article class="card"><h3>Account</h3><div class="profile-summary"><span class="avatar">V</span><div><b>Vishva</b><small>Signed in to Control Tower</small></div></div><p class="muted">Account and access management are provided by your workspace administrator.</p></article></section>';
     }
     return [title, sub, h];
+  }
+  function renderFullPage() {
+    var p = infoPage(S.page);
+    app.classList.add('page-view');
+    app.innerHTML = '<section class="full-page" aria-labelledby="full-page-title"><header class="full-page-heading"><div><p class="eyebrow">CONTROL TOWER</p><h1 id="full-page-title">' + esc(p[0]) + '</h1><p class="muted">' + esc(p[1]) + '</p></div><button class="btn2" data-page="dash">← Dashboard</button></header><div class="full-page-content">' + p[2] + '</div></section>';
+    document.title = p[0] + ' | Control Tower';
   }
   function dayPage(d) {
     var l = ALL().filter(function (r) { return dateOf(r.day).getDate() === d; }).sort(bySev);
@@ -1303,7 +1327,14 @@ export function initDashboard() {'use strict';
   function stamp() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   function refreshNow(quiet) { document.querySelector('.updated').textContent = 'Last updated ' + stamp(); render(); if (S.drawer) renderDrawer(); if (!quiet) toast('Dashboard refreshed'); }
   function setAuto(on) { S.auto = on; clearInterval(autoTimer); if (on) autoTimer = setInterval(function () { refreshNow(true); }, S.every * 1000); toast('Auto-refresh ' + (on ? 'on · every ' + S.every + ' s' : 'off')); }
-  function openInfo(k) { S.drawer = { type: 'info', k: k }; S.open = null; S.pop = null; renderPops(); renderDrawer(); }
+  function openPage(k) {
+    S.page = k === 'dash' ? null : k;
+    S.drawer = null; S.open = null; S.pop = null;
+    shell.classList.remove('menu-open');
+    document.body.classList.remove('drawer-open');
+    renderPops(); renderNav(); render();
+    if (!S.page) { document.title = 'Control Tower Dashboard'; window.scrollTo(0, 0); }
+  }
 
   var up = document.querySelector('.updated'); up.setAttribute('role', 'button'); up.tabIndex = 0; up.style.cursor = 'pointer'; up.title = 'Refresh now';
 
@@ -1311,14 +1342,30 @@ export function initDashboard() {'use strict';
     var t = e.target.closest('button,a,[data-day],.updated'); if (!t) return;
     var a, stop = true;
     if (t.matches('.updated')) refreshNow();
-    else if ((a = t.getAttribute('data-stub'))) openInfo(a === 'Settings' ? 'settings' : 'help');
-    else if (t.hasAttribute('data-nav') && ['ana', 'perf'].indexOf(t.getAttribute('data-nav')) >= 0) openInfo(t.getAttribute('data-nav'));
-    else if (t.matches('.sub a') && t.getAttribute('href') === '#') { e.preventDefault(); shell.classList.remove('menu-open'); openInfo(SUBMAP[t.textContent.trim()] || 'register'); }
+    else if ((a = t.getAttribute('data-page'))) { e.preventDefault(); openPage(a); }
+    else if ((a = t.getAttribute('data-stub'))) openPage(a === 'Settings' ? 'settings' : 'help');
+    else if (t.hasAttribute('data-nav') && ['ana', 'perf'].indexOf(t.getAttribute('data-nav')) >= 0) openPage(t.getAttribute('data-nav'));
+    else if (t.matches('.sub a') && t.getAttribute('href') === '#') {
+      e.preventDefault();
+      var page = SUBMAP[t.textContent.trim()];
+      if (page) openPage(page);
+      else toast('This section is not available.');
+    }
+    else if (t.matches('.sub a') && S.page) {
+      e.preventDefault();
+      var targetId = t.getAttribute('href').slice(1);
+      openPage('dash');
+      var target = document.getElementById(targetId), hash = '#' + targetId;
+      if (target) {
+        if (window.location.hash !== hash) window.location.hash = hash;
+        target.scrollIntoView({ block: 'start' });
+      }
+    }
     else if (t.hasAttribute('data-markseen')) { S.seen = true; renderPops(); toast('Notifications marked as seen'); }
     else if ((a = t.getAttribute('data-day'))) { S.drawer = { type: 'day', d: +a }; S.pop = null; renderPops(); renderDrawer(); }
     else if (t.hasAttribute('data-copy')) { var tx = t.getAttribute('data-copy'); try { navigator.clipboard.writeText(tx).then(function () { toast('Copied'); }, function () { toast('Copy blocked by the browser'); }); } catch (x) { toast('Copy blocked by the browser'); } }
-    else if (t.hasAttribute('data-auto')) { setAuto(!S.auto); renderDrawer(); }
-    else if ((a = t.getAttribute('data-every'))) { S.every = +a; if (S.auto) setAuto(true); renderDrawer(); }
+    else if (t.hasAttribute('data-auto')) { setAuto(!S.auto); render(); }
+    else if ((a = t.getAttribute('data-every'))) { S.every = +a; if (S.auto) setAuto(true); render(); }
     else if (t.hasAttribute('data-refresh')) refreshNow();
     else stop = false;
     if (stop) e.stopImmediatePropagation();
@@ -1354,7 +1401,7 @@ export function initDashboard() {'use strict';
     else if (k === 'a') setAuto(!S.auto);
     else if (k === 'f' || k === 'n' || k === 'c') { S.pop = S.pop === { f: 'filter', n: 'notif', c: 'cal' }[k] ? null : { f: 'filter', n: 'notif', c: 'cal' }[k]; renderPops(); }
     else if (k === 'm') shell.classList.toggle('collapsed');
-    else if (k === '?') openInfo('help');
+    else if (k === '?') openPage('help');
     else if (k === '/') { e.preventDefault(); document.getElementById('q').focus(); }
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.activeElement && document.activeElement.id === 'q') document.activeElement.blur(); });
