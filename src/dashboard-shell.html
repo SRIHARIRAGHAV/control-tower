@@ -1,0 +1,57 @@
+
+<div class="shell" id="shell">
+
+  <!-- ================= sidebar ================= -->
+  <aside class="side" aria-label="Main navigation">
+    <div class="brand">
+      <div class="logo"><i>X</i><span>Xone</span></div>
+      <button class="iconbtn collapse" data-act="collapse" aria-label="Collapse sidebar" title="Collapse sidebar">
+        <svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg>
+      </button>
+    </div>
+    <nav class="menu" id="menu"></nav>
+    <div class="bottom">
+      <button class="nav" data-stub="Help center"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><path d="M12 17.5v.01"/></svg><span class="lbl">Help center</span></button>
+      <button class="nav" data-stub="Settings"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span class="lbl">Settings</span></button>
+    </div>
+  </aside>
+
+  <div class="body">
+    <!-- ================= top bar ================= -->
+    <header class="top"><div class="in">
+      <button class="iconbtn hamb" data-act="menu" aria-label="Open menu"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <div class="search anchor">
+        <svg class="i" viewBox="0 0 24 24" style="color:var(--faint)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Search projects, departments, risks" aria-label="Search">
+        <button class="iconbtn" data-pop="filter" aria-label="Filter by risk level" title="Filter"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span class="dotbadge" id="fbadge" hidden></span></button>
+        <div class="pop left" id="pop-filter" hidden></div>
+      </div>
+      <span class="spacer"></span>
+      <span class="updated">Last updated 10:45</span>
+      <div class="anchor">
+        <button class="tbtn icon" data-pop="notif" aria-label="Notifications" title="Notifications"><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="dotbadge">3</span></button>
+        <div class="pop" id="pop-notif" hidden style="width:320px"></div>
+      </div>
+      <div class="anchor">
+        <button class="tbtn" data-pop="view"><span class="lbl">View:&nbsp;</span><b id="viewlbl">30 days</b><svg class="i" viewBox="0 0 24 24" style="width:16px"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="pop" id="pop-view" hidden></div>
+      </div>
+      <div class="anchor">
+        <button class="tbtn" data-pop="cal"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span class="lbl">Calendar</span></button>
+        <div class="pop" id="pop-cal" hidden></div>
+      </div>
+      <span class="tbtn user profile-slot" aria-label="Signed in as Vishva"><span class="avatar sm">V</span><span class="uname">Vishva</span></span>
+    </div></header>
+
+    <main class="page" id="app"></main>
+  </div>
+</div>
+
+<div class="agent" id="agent">
+  <span class="bubble" id="bubble">4 critical risks need action. Ask me for a briefing.</span>
+  <button class="fab" data-act="chat" aria-label="Open AI agent">AI</button>
+</div>
+<div id="chatbox"></div>
+<div id="layer"></div>
+<div id="tip" role="tooltip" hidden></div>
+
