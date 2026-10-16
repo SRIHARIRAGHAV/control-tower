@@ -249,6 +249,8 @@ export function initDashboard() {'use strict';
 
   function render() {
     if (S.page) { renderFullPage(); return; }
+    var sampleNotice = document.getElementById('sample-data-notice');
+    if (sampleNotice) sampleNotice.hidden = false;
     app.classList.remove('page-view');
     var V = VIEWS[S.view];
     var critOpen = criticalOpen(), off = offTrackProjects(), stuck = stuckItems();
@@ -1298,6 +1300,8 @@ export function initDashboard() {'use strict';
   }
   function renderFullPage() {
     var p = infoPage(S.page);
+    var sampleNotice = document.getElementById('sample-data-notice');
+    if (sampleNotice) sampleNotice.hidden = true;
     app.classList.add('page-view');
     app.innerHTML = '<section class="full-page" aria-labelledby="full-page-title"><header class="full-page-heading"><div><p class="eyebrow">CONTROL TOWER</p><h1 id="full-page-title">' + esc(p[0]) + '</h1><p class="muted">' + esc(p[1]) + '</p></div><button class="btn2" data-page="dash">← Dashboard</button></header><div class="full-page-content">' + p[2] + '</div></section>';
     document.title = p[0] + ' | Control Tower';
