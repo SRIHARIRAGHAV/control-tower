@@ -614,6 +614,7 @@ export function initDashboard() {'use strict';
   }
   function renderDrawer() {
     var D = S.drawer;
+    document.body.classList.toggle('drawer-open', !!D);
     if (!D) { layer.innerHTML = ''; return; }
     if (D.type === 'coo') return renderCooDrawer(D);   // COO risk intelligence hook
     var title, sub, list, pot = false, showDept = true;
@@ -1193,7 +1194,14 @@ export function initDashboard() {'use strict';
       S.drawer = a.charAt(0) === 'p' ? { type: 'potential' } : a.charAt(0) === 's' ? { type: 'stuck' } : { type: 'dept', dept: r.dept };
       S.open = a; tip.hidden = true; renderDrawer(); return;
     }
-    if ((a = t.getAttribute('data-toggle'))) { S.open = S.open === a ? null : a; renderDrawer(); return; }
+    if ((a = t.getAttribute('data-toggle'))) {
+      var drawer = layer.querySelector('.drawer'), scrollTop = drawer ? drawer.scrollTop : 0;
+      S.open = S.open === a ? null : a;
+      renderDrawer();
+      drawer = layer.querySelector('.drawer');
+      if (drawer) drawer.scrollTop = scrollTop;
+      return;
+    }
     if (t.hasAttribute('data-close')) { S.drawer = null; S.open = null; renderDrawer(); return; }
   });
   document.addEventListener('submit', function (e) {
@@ -1276,7 +1284,9 @@ export function initDashboard() {'use strict';
   }
   var _rd = renderDrawer;
   renderDrawer = function () {
-    var D = S.drawer; if (!D || (D.type !== 'info' && D.type !== 'day')) return _rd();
+    var D = S.drawer;
+    document.body.classList.toggle('drawer-open', !!D);
+    if (!D || (D.type !== 'info' && D.type !== 'day')) return _rd();
     var p = D.type === 'info' ? infoPage(D.k) : dayPage(D.d);
     layer.innerHTML = '<div class="scrim"><button class="away" data-close aria-label="Close"></button><aside class="drawer" role="dialog" aria-label="' + esc(p[0]) + '">' +
       '<div class="top2"><div><h2>' + esc(p[0]) + '</h2><span class="muted">' + esc(p[1]) + '</span></div><button class="iconbtn" data-close aria-label="Close" style="border:1px solid var(--line)">✕</button></div>' + p[2] + '</aside></div>';
