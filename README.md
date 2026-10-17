@@ -105,8 +105,7 @@ use **Sync sources now** from the Sources menu.
 
 Jira sync is restricted to projects the app can browse because Jira rejects
 unbounded JQL searches. Confluence uses the v2 pages API to read page summaries
-and requests `read:confluence-content.summary`, `read:confluence-content.all`,
-and `read:confluence-space.summary` in `manifest.yml`.
+and requests the granular `read:page:confluence` scope required by that API.
 
 Live verification requires deploying and installing the Forge app in a Jira
 site, granting its requested scopes, then running **Sync sources now**.
