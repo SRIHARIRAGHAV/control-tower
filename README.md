@@ -96,7 +96,7 @@ alongside the workspace slug:
 - `BITBUCKET_WORKSPACE`
 - `BITBUCKET_WORKSPACE_ACCESS_TOKEN`
 
-The integration sends the workspace access token as a Bearer token. Create it
+The integration sends the workspace access token in the HTTP Authorization header. Create it
 in the Bitbucket workspace settings under **Access tokens**, grant only
 repository read permission, and store its generated value in Forge. It is not
 the token name, and it cannot be retrieved after creation. Do not commit
