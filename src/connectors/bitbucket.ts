@@ -8,16 +8,15 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
     process?: { env?: Record<string, string | undefined> };
   }).process?.env;
   const workspace = env?.BITBUCKET_WORKSPACE?.trim();
-  const email = env?.BITBUCKET_ACCOUNT_EMAIL?.trim();
-  const token = env?.BITBUCKET_API_TOKEN?.trim();
-  if (!workspace || !email || !token) {
+  const token = env?.BITBUCKET_WORKSPACE_ACCESS_TOKEN?.trim();
+  if (!workspace || !token) {
     return {
       data: [],
       status: {
         state: 'not-configured',
         count: 0,
         message:
-          'Set encrypted BITBUCKET_WORKSPACE, BITBUCKET_ACCOUNT_EMAIL, and BITBUCKET_API_TOKEN Forge variables. The API token needs read:repository:bitbucket scope.',
+          'Set encrypted BITBUCKET_WORKSPACE and BITBUCKET_WORKSPACE_ACCESS_TOKEN Forge variables. The workspace access token needs repository read permission.',
       },
     };
   }
@@ -35,12 +34,12 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
     const pageUrl: URL = new URL(nextUrl);
     const body: BitbucketRepoResponse = await requestJson<BitbucketRepoResponse>(
       pageUrl,
-      { headers: bitbucketAuthorizationHeaders(email, token), redirect: 'error' },
+      { headers: bitbucketAuthorizationHeaders(token), redirect: 'error' },
       {
         expectedHost: 'api.bitbucket.org',
         errorMessage:
-          'Bitbucket returned an error. Check that the Atlassian account API token is active, has read:repository:bitbucket scope, and that the account can access this workspace.',
-        redact: [token, email, Buffer.from(`${email}:${token}`).toString('base64')],
+          'Bitbucket returned an error. Check that the workspace access token is active, has repository read permission, and belongs to this workspace.',
+        redact: [token],
       },
     );
     data.push(...mapBitbucketRepositories(body));

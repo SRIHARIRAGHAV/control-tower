@@ -89,18 +89,19 @@ not used.
 
 ## Connected sources
 
-Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is optional and requires a workspace slug, Atlassian account email,
-and an Atlassian account API token with the `read:repository:bitbucket` scope
-configured as **encrypted Forge variables** in each target environment:
+Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is optional and requires a Bitbucket Premium workspace access token with
+repository read permission, configured as an **encrypted Forge variable**
+alongside the workspace slug:
 
 - `BITBUCKET_WORKSPACE`
-- `BITBUCKET_ACCOUNT_EMAIL`
-- `BITBUCKET_API_TOKEN`
+- `BITBUCKET_WORKSPACE_ACCESS_TOKEN`
 
-The integration uses HTTP Basic authentication with the Atlassian account email
-and API token. Do not commit credentials or put them in frontend code. After
-configuring variables, deploy again and use **Sync sources now** from the
-Sources menu.
+The integration sends the workspace access token as a Bearer token. Create it
+in the Bitbucket workspace settings under **Access tokens**, grant only
+repository read permission, and store its generated value in Forge. It is not
+the token name, and it cannot be retrieved after creation. Do not commit
+credentials or put them in frontend code. After configuring the variables,
+deploy again and use **Sync sources now** from the Sources menu.
 
 Jira sync is restricted to projects the app can browse because Jira rejects
 unbounded JQL searches. Confluence uses the v2 pages API to read page summaries
@@ -109,8 +110,8 @@ and `read:confluence-space.summary` in `manifest.yml`.
 
 Live verification requires deploying and installing the Forge app in a Jira
 site, granting its requested scopes, then running **Sync sources now**.
-Bitbucket additionally requires the encrypted workspace/email/token Forge
-variables listed above.
+Bitbucket additionally requires the encrypted workspace slug and workspace
+access token Forge variables listed above.
 
 ## Forge modules
 
