@@ -2,7 +2,7 @@ import type {
   AddJiraCommentInput,
   CreateJiraIssueInput,
   DashboardDataResponse,
-} from '../../domain/contracts';
+} from '../../shared/types';
 
 async function invokeForge<T>(method: string, payload?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@forge/bridge');

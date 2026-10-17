@@ -1,52 +1,5 @@
 import api, { route } from '@forge/api';
-import type {
-  AddJiraCommentInput,
-  CreateJiraIssueInput,
-  JiraIssueSummary,
-  SourceResult,
-} from '../../domain/contracts';
-
-interface JiraSearchResponse {
-  issues?: Array<{
-    key: string;
-    fields?: {
-      summary?: string;
-      status?: { name?: string };
-      priority?: { name?: string };
-      project?: { name?: string };
-      updated?: string;
-    };
-  }>;
-}
-
-export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>> {
-  const response = await api.asApp().requestJira(route`/rest/api/3/search/jql`, {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jql: 'ORDER BY updated DESC',
-      maxResults: 100,
-      fields: ['summary', 'status', 'priority', 'project', 'updated'],
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Jira returned HTTP ${response.status}. Check the app's Jira scopes and project access.`);
-  }
-
-  const body = (await response.json()) as JiraSearchResponse;
-  const data = (body.issues ?? []).map((issue) => ({
-    key: issue.key,
-    summary: issue.fields?.summary ?? '',
-    status: issue.fields?.status?.name ?? 'Unknown',
-    priority: issue.fields?.priority?.name ?? 'Unset',
-    project: issue.fields?.project?.name ?? 'Unknown',
-    updated: issue.fields?.updated ?? '',
-  }));
-  return {
-    data,
-    status: { state: 'connected', count: data.length, message: `Fetched ${data.length} Jira issues.` },
-  };
-}
+import type { AddJiraCommentInput, CreateJiraIssueInput } from '../shared/types';
 
 function toAdf(text: string) {
   return {

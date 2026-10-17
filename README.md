@@ -10,24 +10,35 @@ in the **Sources** menu.
 
 ```text
 src/
-├── frontend/       React app, UI features, dashboard assets, Forge bridge
-├── backend/        Forge handlers, sync services, Jira/Confluence/Bitbucket APIs
-├── db/             Forge Custom Entity Store adapter
-└── domain/         Shared, runtime-neutral data contracts
+├── index.ts              Forge function entrypoint
+├── resolvers/            Dashboard, sync, and Jira write routes
+├── connectors/           Jira, Confluence, Bitbucket, and HTTP clients
+├── sync/                 Source worker, normalization, and snapshot orchestration
+├── services/             Jira write operations
+├── db/                   Forge Custom Entity Store client
+├── shared/               Runtime-neutral TypeScript contracts
+└── frontend/             React app, UI features, dashboard assets, Forge bridge
 
-src/frontend/index.html ──> frontend/main.tsx
-manifest.yml ─────────────> src/index.ts ──> backend handlers
-frontend ──────────────────────────────────> domain contracts
-backend ───────────────────────────────────> db + domain contracts
+src/frontend/index.html ──> frontend/main.tsx ──> static/dashboard/
+manifest.yml ─────────────> src/index.ts ──> resolvers/ + scheduled sync
+connectors + resolvers ───> sync/services ──> db + shared contracts
+frontend ───────────────────────────────────> shared contracts
 ```
 
-- `src/domain/` contains shared data contracts. It has no Forge or UI runtime
+- `src/shared/` contains shared data contracts and has no Forge runtime
   dependencies.
-- `src/backend/handlers/` validates and routes Forge resolver requests.
-- `src/backend/services/` coordinates sync work and `integrations/` owns each
-  provider API boundary.
+- `src/resolvers/` registers Forge resolver routes. `src/index.ts` is the
+  function entrypoint used by `manifest.yml`.
+- `src/connectors/` owns each provider API boundary. Shared external HTTP
+  handling and provider-to-domain normalization are kept in `http.ts` and
+  `src/sync/normalise.ts`.
+- `src/sync/` coordinates source reads, preserves prior data when an individual
+  source fails, and persists the combined snapshot through `src/db/client.ts`.
 - `src/db/` is the persistence boundary and uses Forge Custom Entity Store
-  (`@forge/kvs`); it is not a separate database server.
+  (`@forge/kvs`); it is not a SQL database or a separate database server.
+- The React source remains under `src/frontend/`. Vite builds the Forge Custom
+  UI resource into `static/dashboard/`; generated build output is ignored by
+  Git.
 - `src/frontend/features/` contains UI features, `services/` contains typed
   Forge bridge calls, and `dashboard/` keeps the existing dashboard assets
   together.
@@ -36,11 +47,17 @@ backend ────────────────────────
   features rather than adding more DOM manipulation to that legacy dashboard.
 - `src/index.ts` is the Forge function entrypoint; `src/frontend/main.tsx` is
   the browser entrypoint. Vite builds from `src/frontend/` into Forge's
-  `static/` resource directory, and the two runtimes stay separate.
+  `static/dashboard/` resource directory, and the two runtimes stay separate.
 
-Keep credentials, Forge API calls, and storage access in the backend. Keep
-provider response mapping in its integration module and share only normalized
-domain contracts with the frontend.
+The `rules/`, `scoring/`, `ai/`, and additional resolver modules in the planned
+architecture are not implemented yet. They should be added alongside the
+corresponding product behavior rather than as empty or success-shaped stubs.
+Forge Custom Entity Store is the approved persistence layer for this app, so
+do not add the example SQL migration or a separate database.
+
+Keep credentials, Forge API calls, and storage access in backend-only layers
+(`connectors`, `services`, and `db`). Normalize provider responses in
+`src/sync/normalise.ts` and share only normalized contracts with the frontend.
 
 ## Local checks
 
@@ -72,20 +89,28 @@ not used.
 
 ## Connected sources
 
-Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is
-optional and requires a workspace slug, account email, and repository-read API
-token configured as **encrypted Forge variables** in each target environment:
+Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is optional and requires a workspace slug, Atlassian account email,
+and an Atlassian account API token with Bitbucket repository-read permission
+configured as **encrypted Forge variables** in each target environment:
 
 - `BITBUCKET_WORKSPACE`
 - `BITBUCKET_ACCOUNT_EMAIL`
 - `BITBUCKET_API_TOKEN`
 
-Do not commit credentials or put them in frontend code. After configuring
-variables, deploy again and use **Sync sources now** from the Sources menu.
+The integration uses HTTP Basic authentication with the Atlassian account email
+and API token. Do not commit credentials or put them in frontend code. After
+configuring variables, deploy again and use **Sync sources now** from the
+Sources menu.
+
+Live verification requires deploying and installing the Forge app in a Jira
+site, granting its requested scopes, then running **Sync sources now**.
+Bitbucket additionally requires the encrypted workspace/email/token Forge
+variables listed above.
 
 ## Forge modules
 
-- Jira global page with a Forge Custom UI resource built into `static/`.
+- Jira global page with a Forge Custom UI resource built into
+  `static/dashboard/`.
 - Forge resolver functions for reading sync data, triggering sync, and
   creating Jira issues/comments as the signed-in user.
 - Hourly Forge scheduled trigger for Jira, Confluence, and optional Bitbucket

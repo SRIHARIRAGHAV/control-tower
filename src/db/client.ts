@@ -1,5 +1,5 @@
 import { kvs } from '@forge/kvs';
-import type { SyncState, XoneSnapshot } from '../domain/contracts';
+import type { SyncState, XoneSnapshot } from '../shared/types';
 
 const snapshotEntity = kvs.entity<{ payload: XoneSnapshot; updatedAt: string }>('xone_snapshot');
 const statusEntity = kvs.entity<{ payload: SyncState; updatedAt: string }>('xone_sync_status');

@@ -92,6 +92,9 @@ nav.menu::-webkit-scrollbar{display:none}
 .forge-items>b{font-size:12px}
 .forge-items p{font-size:12px;line-height:1.4;overflow-wrap:anywhere}
 .forge-items p small{display:block;color:var(--muted)}
+.forge-items-group{display:flex;flex-direction:column;gap:5px;padding-top:8px;border-top:1px solid var(--line)}
+.forge-items-group>b{font-size:12px}
+.forge-items-group a{color:var(--accent-ink);text-decoration:underline;text-underline-offset:2px}
 .forge-items .forge-empty{color:var(--muted)}
 .forge-status-error{margin:8px 0;color:var(--crit-ink);font-size:12px;overflow-wrap:anywhere}
 .anchor{position:relative}

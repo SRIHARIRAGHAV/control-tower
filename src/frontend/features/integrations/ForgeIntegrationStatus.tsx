@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SourceStatus, SyncState, XoneSnapshot } from '../../../domain/contracts';
+import type { SourceStatus, SyncState, XoneSnapshot } from '../../../shared/types';
 import { getDashboardData, syncNow } from '../../services/forge-api';
 
 type IntegrationKey = 'jira' | 'confluence' | 'bitbucket';
@@ -94,16 +94,33 @@ export default function ForgeIntegrationStatus() {
         ))}
         {snapshot && (
           <div className="forge-items">
-            <b>Latest synced records</b>
-            {snapshot.jiraIssues.slice(0, 5).map((issue) => (
-              <p key={issue.key}><strong>{issue.key}</strong> · {issue.summary} <small>{issue.status}</small></p>
-            ))}
-            {snapshot.confluencePages.slice(0, 5).map((page) => (
-              <p key={page.id}><strong>{page.title}</strong> <small>{page.space}</small></p>
-            ))}
-            {snapshot.bitbucketRepositories.slice(0, 5).map((repository) => (
-              <p key={repository.fullName}><strong>{repository.fullName}</strong></p>
-            ))}
+            <b>Synced records</b>
+            <section className="forge-items-group" aria-label={`Jira issues, ${snapshot.jiraIssues.length} records`}>
+              <b>Jira issues · {snapshot.jiraIssues.length}</b>
+              {snapshot.jiraIssues.map((issue) => (
+                <p key={issue.key}>
+                  <strong>{issue.key}</strong> · {issue.summary}
+                  <small>{issue.project} · {issue.status} · {issue.priority}</small>
+                </p>
+              ))}
+            </section>
+            <section className="forge-items-group" aria-label={`Confluence pages, ${snapshot.confluencePages.length} records`}>
+              <b>Confluence pages · {snapshot.confluencePages.length}</b>
+              {snapshot.confluencePages.map((page) => (
+                <p key={page.id}><strong>{page.title}</strong><small>{page.space}</small></p>
+              ))}
+            </section>
+            <section className="forge-items-group" aria-label={`Bitbucket repositories, ${snapshot.bitbucketRepositories.length} records`}>
+              <b>Bitbucket repositories · {snapshot.bitbucketRepositories.length}</b>
+              {snapshot.bitbucketRepositories.map((repository) => (
+                <p key={repository.fullName}>
+                  {repository.url
+                    ? <a href={repository.url} target="_blank" rel="noreferrer">{repository.fullName}</a>
+                    : <strong>{repository.fullName}</strong>}
+                  <small>{repository.updated}</small>
+                </p>
+              ))}
+            </section>
             {!snapshot.jiraIssues.length && !snapshot.confluencePages.length && !snapshot.bitbucketRepositories.length && (
               <p className="forge-empty">No records are available in the latest snapshot.</p>
             )}

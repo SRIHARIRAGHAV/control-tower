@@ -3,10 +3,10 @@ import type {
   SourceStatus,
   SyncState,
   XoneSnapshot,
-} from '../../domain/contracts';
-import { fetchBitbucketRepositories } from '../integrations/bitbucket';
-import { fetchConfluencePages } from '../integrations/confluence';
-import { fetchJiraIssues } from '../integrations/jira';
+} from '../shared/types';
+import { fetchBitbucketRepositories } from '../connectors/bitbucket';
+import { fetchConfluencePages } from '../connectors/confluence';
+import { fetchJiraIssues } from '../connectors/jira';
 
 async function runSource<T>(
   name: string,
