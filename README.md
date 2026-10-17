@@ -90,7 +90,7 @@ not used.
 ## Connected sources
 
 Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is optional and requires a workspace slug, Atlassian account email,
-and an Atlassian account API token with Bitbucket repository-read permission
+and an Atlassian account API token with the `read:repository:bitbucket` scope
 configured as **encrypted Forge variables** in each target environment:
 
 - `BITBUCKET_WORKSPACE`
@@ -101,6 +101,11 @@ The integration uses HTTP Basic authentication with the Atlassian account email
 and API token. Do not commit credentials or put them in frontend code. After
 configuring variables, deploy again and use **Sync sources now** from the
 Sources menu.
+
+Jira sync is restricted to projects the app can browse because Jira rejects
+unbounded JQL searches. Confluence uses the v2 pages API to read page summaries
+and requests `read:confluence-content.summary`, `read:confluence-content.all`,
+and `read:confluence-space.summary` in `manifest.yml`.
 
 Live verification requires deploying and installing the Forge app in a Jira
 site, granting its requested scopes, then running **Sync sources now**.

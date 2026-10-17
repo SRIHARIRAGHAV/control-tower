@@ -19,15 +19,13 @@ export interface JiraSearchResponse {
   nextPageToken?: string;
 }
 
-export interface ConfluenceSearchResponse {
+export interface ConfluencePagesResponse {
   results?: Array<{
     id: string;
     title: string;
+    spaceId?: string;
     _links?: { webui?: string };
-    space?: { name?: string; key?: string };
   }>;
-  size?: number;
-  start?: number;
   _links?: { next?: string };
 }
 
@@ -52,11 +50,11 @@ export function mapJiraIssues(body: JiraSearchResponse): JiraIssueSummary[] {
   }));
 }
 
-export function mapConfluencePages(body: ConfluenceSearchResponse): ConfluencePageSummary[] {
+export function mapConfluencePages(body: ConfluencePagesResponse): ConfluencePageSummary[] {
   return (body.results ?? []).map((page) => ({
     id: page.id,
     title: page.title,
-    space: page.space?.name ?? page.space?.key ?? 'Unknown',
+    space: page.spaceId ?? 'Unknown',
     url: page._links?.webui ?? '',
   }));
 }

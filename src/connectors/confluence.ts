@@ -1,26 +1,42 @@
 import api, { route } from '@forge/api';
 import type { ConfluencePageSummary, SourceResult } from '../shared/types';
-import { mapConfluencePages, type ConfluenceSearchResponse } from '../sync/normalise';
+import { mapConfluencePages, type ConfluencePagesResponse } from '../sync/normalise';
+import { readProviderErrorDetail } from './http';
 
 export async function fetchConfluencePages(): Promise<SourceResult<ConfluencePageSummary>> {
-  const pageSize = 50;
+  const pageSize = 100;
   const data: ConfluencePageSummary[] = [];
-  let start = 0;
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
 
   while (true) {
+    const query = new URLSearchParams({
+      limit: String(pageSize),
+      sort: '-modified-date',
+      ...(cursor ? { cursor } : {}),
+    });
     const response = await api.asApp().requestConfluence(
-      route`/wiki/rest/api/content/search?cql=type=page%20ORDER%20BY%20lastmodified%20DESC&limit=${pageSize}&start=${start}`,
+      route`/wiki/api/v2/pages?${query}`,
       { headers: { Accept: 'application/json' } },
     );
     if (!response.ok) {
-      throw new Error(`Confluence returned HTTP ${response.status}. Check the app's Confluence scopes and access.`);
+      const detail = await readProviderErrorDetail(response);
+      throw new Error(
+        `Confluence returned HTTP ${response.status}${detail ? `: ${detail}` : ''}. Check the app's Confluence scopes and access.`,
+      );
     }
 
-    const body = (await response.json()) as ConfluenceSearchResponse;
+    const body = (await response.json()) as ConfluencePagesResponse;
     const pages = mapConfluencePages(body);
     data.push(...pages);
-    if (!body._links?.next || pages.length === 0) break;
-    start = (body.start ?? start) + (body.size ?? pages.length);
+    const next = body._links?.next;
+    if (!next || pages.length === 0) break;
+    const nextCursor = new URL(next, 'https://confluence.invalid').searchParams.get('cursor');
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      throw new Error('Confluence returned a missing or repeated pagination cursor; stopping sync.');
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
   }
 
   return {

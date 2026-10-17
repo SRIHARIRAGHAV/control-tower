@@ -16,7 +16,8 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
       status: {
         state: 'not-configured',
         count: 0,
-        message: 'Set encrypted BITBUCKET_WORKSPACE, BITBUCKET_ACCOUNT_EMAIL, and BITBUCKET_API_TOKEN Forge variables.',
+        message:
+          'Set encrypted BITBUCKET_WORKSPACE, BITBUCKET_ACCOUNT_EMAIL, and BITBUCKET_API_TOKEN Forge variables. The API token needs read:repository:bitbucket scope.',
       },
     };
   }
@@ -24,16 +25,21 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
   let nextUrl: string | undefined =
     `https://api.bitbucket.org/2.0/repositories/${encodeURIComponent(workspace)}?pagelen=100&sort=-updated_on`;
   const data: BitbucketRepositorySummary[] = [];
+  const seenPageUrls = new Set<string>();
 
   while (nextUrl) {
+    if (seenPageUrls.has(nextUrl)) {
+      throw new Error('Bitbucket returned a repeated pagination URL; stopping sync to avoid an infinite loop.');
+    }
+    seenPageUrls.add(nextUrl);
     const pageUrl: URL = new URL(nextUrl);
     const body: BitbucketRepoResponse = await requestJson<BitbucketRepoResponse>(
       pageUrl,
-      { headers: bitbucketAuthorizationHeaders(email, token) },
+      { headers: bitbucketAuthorizationHeaders(email, token), redirect: 'error' },
       {
         expectedHost: 'api.bitbucket.org',
         errorMessage:
-          'Bitbucket returned an error. Check that the Atlassian account API token is active, has repository-read scope, and that the account can access this workspace.',
+          'Bitbucket returned an error. Check that the Atlassian account API token is active, has read:repository:bitbucket scope, and that the account can access this workspace.',
         redact: [token, email, Buffer.from(`${email}:${token}`).toString('base64')],
       },
     );
