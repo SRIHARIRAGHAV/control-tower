@@ -1,6 +1,6 @@
 import type { BitbucketRepositorySummary, SourceResult } from '../shared/types.ts';
 import { mapBitbucketRepositories, type BitbucketRepoResponse } from '../sync/normalise';
-import { bitbucketAuthorizationHeaders } from './bitbucket-auth';
+import { fetchBitbucketAccessToken } from './bitbucket-auth';
 import { requestJson } from './http';
 
 export async function fetchBitbucketRepositories(): Promise<SourceResult<BitbucketRepositorySummary>> {
@@ -8,18 +8,20 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
     process?: { env?: Record<string, string | undefined> };
   }).process?.env;
   const workspace = env?.BITBUCKET_WORKSPACE?.trim();
-  const token = env?.BITBUCKET_WORKSPACE_ACCESS_TOKEN?.trim();
-  if (!workspace || !token) {
+  const clientId = env?.BITBUCKET_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = env?.BITBUCKET_OAUTH_CLIENT_SECRET?.trim();
+  if (!workspace || !clientId || !clientSecret) {
     return {
       data: [],
       status: {
         state: 'not-configured',
         count: 0,
         message:
-          'Set encrypted BITBUCKET_WORKSPACE and BITBUCKET_WORKSPACE_ACCESS_TOKEN Forge variables. The workspace access token needs repository read permission.',
+          'Set encrypted BITBUCKET_WORKSPACE, BITBUCKET_OAUTH_CLIENT_ID, and BITBUCKET_OAUTH_CLIENT_SECRET Forge variables. Configure the OAuth consumer with repository read permission.',
       },
     };
   }
+  const token = await fetchBitbucketAccessToken(clientId, clientSecret);
 
   let nextUrl: string | undefined =
     `https://api.bitbucket.org/2.0/repositories/${encodeURIComponent(workspace)}?pagelen=100&sort=-updated_on`;
@@ -34,12 +36,15 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
     const pageUrl: URL = new URL(nextUrl);
     const body: BitbucketRepoResponse = await requestJson<BitbucketRepoResponse>(
       pageUrl,
-      { headers: bitbucketAuthorizationHeaders(token), redirect: 'error' },
+      {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        redirect: 'error',
+      },
       {
         expectedHost: 'api.bitbucket.org',
         errorMessage:
-          'Bitbucket returned an error. Check that the workspace access token is active, has repository read permission, and belongs to this workspace.',
-        redact: [token],
+          'Bitbucket returned an error. Check that the OAuth consumer has repository read permission and that the configured workspace is accessible.',
+        redact: [token, clientId, clientSecret],
       },
     );
     data.push(...mapBitbucketRepositories(body));

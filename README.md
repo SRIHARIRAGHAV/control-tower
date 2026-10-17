@@ -89,19 +89,19 @@ not used.
 
 ## Connected sources
 
-Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is optional and requires a Bitbucket Premium workspace access token with
-repository read permission, configured as an **encrypted Forge variable**
-alongside the workspace slug:
+Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is optional and uses a Bitbucket OAuth consumer with repository read
+permission, configured through **encrypted Forge variables**:
 
 - `BITBUCKET_WORKSPACE`
-- `BITBUCKET_WORKSPACE_ACCESS_TOKEN`
+- `BITBUCKET_OAUTH_CLIENT_ID`
+- `BITBUCKET_OAUTH_CLIENT_SECRET`
 
-The integration sends the workspace access token in the HTTP Authorization header. Create it
-in the Bitbucket workspace settings under **Access tokens**, grant only
-repository read permission, and store its generated value in Forge. It is not
-the token name, and it cannot be retrieved after creation. Do not commit
-credentials or put them in frontend code. After configuring the variables,
-deploy again and use **Sync sources now** from the Sources menu.
+Create an OAuth consumer in the Bitbucket workspace settings, grant repository
+read access, and store its key and secret as encrypted Forge variables. The
+backend exchanges them using OAuth 2 client credentials and sends the returned
+short-lived access token to the repository API. Do not commit credentials or
+put them in frontend code. After configuring the variables, deploy again and
+use **Sync sources now** from the Sources menu.
 
 Jira sync is restricted to projects the app can browse because Jira rejects
 unbounded JQL searches. Confluence uses the v2 pages API to read page summaries
@@ -110,8 +110,8 @@ and `read:confluence-space.summary` in `manifest.yml`.
 
 Live verification requires deploying and installing the Forge app in a Jira
 site, granting its requested scopes, then running **Sync sources now**.
-Bitbucket additionally requires the encrypted workspace slug and workspace
-access token Forge variables listed above.
+Bitbucket additionally requires the encrypted workspace slug and OAuth
+consumer credentials listed above.
 
 ## Forge modules
 

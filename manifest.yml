@@ -53,3 +53,4 @@ permissions:
     fetch:
       backend:
         - address: api.bitbucket.org
+        - address: bitbucket.org

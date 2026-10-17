@@ -5,7 +5,8 @@ resolver.define('getDashboardData', async () => {
   const [snapshot, storedState] = await Promise.all([readSnapshot(), readSyncState()]);
   const configured = Boolean(
     process.env.BITBUCKET_WORKSPACE?.trim() &&
-      process.env.BITBUCKET_WORKSPACE_ACCESS_TOKEN?.trim(),
+      process.env.BITBUCKET_OAUTH_CLIENT_ID?.trim() &&
+      process.env.BITBUCKET_OAUTH_CLIENT_SECRET?.trim(),
   );
   const state =
     storedState ??
