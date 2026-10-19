@@ -607,9 +607,6 @@ export function initDashboard() {'use strict';
     var unknownApprovalAge = pendingApprovals.filter(function (issue) {
       return !issue.createdAt || Number.isNaN(new Date(issue.createdAt).getTime());
     }).length;
-    var affectedClients = {};
-    RISKS.forEach(function (issue) { if (issue.client) affectedClients[issue.client] = true; });
-    var affectedClientCount = Object.keys(affectedClients).length;
     var bitbucketRepositories = liveSourceData && liveSourceData.snapshot
       ? liveSourceData.snapshot.bitbucketRepositories || [] : [];
     var bitbucketCommits = bitbucketRepositories.reduce(function (all, repository) {
@@ -647,7 +644,7 @@ export function initDashboard() {'use strict';
         }).join('') + '<span>· ' + Object.keys(cl).length + ' clients exposed</span></small>';
           })() + '</p>') + '</section>';
 
-    // ---- row 1: five KPI cards — health, delivery, now, stuck, next ----
+    // ---- row 1: executive health and live action KPIs ----
     h += '<section class="kpis" id="top" aria-label="Key numbers">';
 
     var hl = sourceDataReceived
@@ -675,7 +672,7 @@ export function initDashboard() {'use strict';
     var offTop = topDept(offRisks), offNext = first(offRisks), offPct = Math.round(off.length / TOTAL_PROJECTS * 100);
     var ol = offPct >= 20 ? 'c' : offPct >= 10 ? 'h' : 'n';
     h += sourceDataReceived
-      ? '<article class="card kpi"><div class="ch"><h3>Clients affected</h3><span class="pill ' + (affectedClientCount ? 'h' : 'n') + '">' + affectedClientCount + '</span></div><p class="def">Distinct clients named on synced Jira issues</p><div class="big"><span class="n num">' + affectedClientCount + '</span><span class="what">clients</span></div></article>'
+      ? ''
       : '<button class="card click kpi k-' + ol + '" data-open="offtrack"><div class="ch"><h3>Projects off track</h3>' + statusPill(ol) + '</div>' +
         '<p class="def">Projects with a critical issue or blocker</p>' +
         '<div class="offtrack">' + donut([['Off track', off.length, FILL.c], ['On track', TOTAL_PROJECTS - off.length, 'var(--grid)']], off.length, 'of ' + TOTAL_PROJECTS) +
@@ -1051,16 +1048,7 @@ export function initDashboard() {'use strict';
             ' not classified yet. Add Department, Client, or both Department and Impacted department in Jira.</p>'
           : '') + '</div>' +
         '<div class="card"><div class="ch"><h3>Clients affected</h3><span class="pill ' + (clients.length ? 'h' : 'n') + '">' + clients.length + ' clients</span></div>' +
-        (clients.length ? (function () {
-          var topClient = clients[0], topRecords = clientIssues[topClient];
-          var teamNames = {};
-          topRecords.forEach(function (issue) {
-            if (issue.dept !== 'Unassigned') teamNames[issue.dept] = true;
-            if (issue.impactedDepartment) teamNames[issue.impactedDepartment] = true;
-          });
-          return '<p class="callout blue"><b>' + esc(topClient) + '</b> has the most open issues: ' + topRecords.length +
-            ' across ' + Object.keys(teamNames).length + ' assigned department' + (Object.keys(teamNames).length === 1 ? '' : 's') + '.</p>' +
-            clients.slice(0, 3).map(function (client) {
+        (clients.length ? clients.slice(0, 3).map(function (client) {
               var records = clientIssues[client].slice().sort(bySev), topIssue = records[0];
               var departments = {};
               records.forEach(function (issue) {
@@ -1075,9 +1063,7 @@ export function initDashboard() {'use strict';
                 '<small>' + records.length + ' open · ' + Object.keys(departments).length + ' department' +
                 (Object.keys(departments).length === 1 ? '' : 's') + ' · ' + esc(topIssue.key + ' ' + topIssue.risk) +
                 (nextDue ? ' · due ' + esc(nextDue.dueDate) : '') + '</small></button>';
-            }).join('') +
-            '<p class="muted live-unclassified">Financial exposure is not estimated because no validated amount is synced from Jira.</p>';
-        })() : '<p class="muted">No open Jira issues have a Client value. Populate the Client field to show affected clients and their linked problems.</p>') + '</div>' +
+            }).join('') + '<p class="muted live-financial-note">Financial exposure is not estimated because no validated amount is synced from Jira.</p>' : '<p class="muted">No open Jira issues have a Client value. Populate the Client field to show affected clients and their linked problems.</p>') + '</div>' +
         '<div class="card live-handoffs"><div class="ch"><h3>Between departments</h3><span class="pill ' + (crossIssues.length ? 'h' : 'n') + '">' + crossIssues.length + ' handoffs</span></div>' +
         (topFrom ? '<p class="callout"><b>' + esc(topFrom) + '</b> leads ' + fromCounts[topFrom] + ' of ' + crossIssues.length + ' handoffs.</p>' : '') +
         (crossIssues.length ? crossIssues.slice(0, 2).map(function (issue) {
