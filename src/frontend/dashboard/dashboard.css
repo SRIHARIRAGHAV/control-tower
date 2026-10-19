@@ -420,7 +420,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:42px
 .ty.cross{background:var(--xd-soft);color:var(--xd-ink)}
 .typekey{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .verdict small{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:5px;font-size:12.5px;font-weight:500;color:var(--fg2)}
-.imp{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:stretch}
+.imp{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
 @container main (max-width:980px){.imp{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.imp .mx{grid-column:1/-1}}
 @container main (max-width:600px){.imp{grid-template-columns:minmax(0,1fr)}}
 .mxt{width:100%;border-collapse:separate;border-spacing:4px;margin:-4px;width:calc(100% + 8px);table-layout:fixed}
@@ -457,6 +457,13 @@ button.cell:hover{outline:2px solid var(--accent);outline-offset:1px}
 .flow .arr{color:var(--xd);font-weight:700;font-size:12px}
 .flow .ft{font-size:13px;font-weight:600;line-height:1.3}
 .flow small{font-size:12px;color:var(--muted);line-height:1.35}
+.live-handoffs .callout{margin-bottom:2px;padding:5px 8px;font-size:11.5px}
+.live-handoffs .flow{gap:2px;padding:6px 2px}
+.live-handoffs .flow .dchip{font-size:10.5px;padding:1px 5px}
+.live-handoffs .flow .pill{font-size:10px;padding:1px 6px}
+.live-handoffs .flow .ft{font-size:12px}
+.live-handoffs .flow small{font-size:10.5px}
+.live-handoffs-more{align-self:flex-start;margin-top:2px}
 .callout{font-size:12.5px;line-height:1.4;padding:7px 10px;border-radius:9px;background:var(--xd-soft);color:var(--xd-ink);margin-bottom:6px}
 .callout.blue{background:var(--cl-soft);color:var(--cl-ink)}
 .callout b{font-weight:700}
@@ -582,12 +589,26 @@ body.big .page{padding-bottom:18px}
 /* Live executive overview: keep the key dashboard sections in the desktop viewport. */
 .dept-top-issue{font-size:12px;line-height:1.3;color:var(--fg2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .dept small{font-size:11.5px;line-height:1.25;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.department-more{grid-column:1/-1;min-width:0}
-.department-more summary{cursor:pointer;color:var(--accent-ink);font-size:12px;font-weight:600}
-.department-more > div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin-top:6px;max-height:180px;overflow:auto}
-.dept-mini{min-width:0;display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);text-align:left}
-.dept-mini b{font-size:11.5px}
-.dept-mini span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
+.department-carousel{padding:10px 12px}
+.department-carousel .ch{margin-bottom:7px}
+.department-carousel .ch h3{font-size:13px}
+.department-carousel .ch .muted{font-size:10.5px}
+.department-carousel-nav{display:flex;align-items:center;gap:7px}
+.department-carousel-nav .btn2{height:27px;padding:0 8px;font-size:10.5px}
+.department-carousel-nav .btn2:disabled{opacity:.45;cursor:default}
+.department-carousel-nav>span{font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+.department-slide{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.dept-mini-card{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--sunk);text-align:left}
+.dept-mini-card:hover{border-color:var(--accent)}
+.dmc-head{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.dmc-head>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px}
+.dmc-head .pill{font-size:9.5px;padding:1px 6px}
+.dmc-head .pill::before{width:5px;height:5px}
+.dept-mini-card small{color:var(--muted);font-size:10px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dmc-counts{display:flex;flex-wrap:wrap;gap:3px 8px}
+.dmc-level{display:inline-flex;align-items:center;gap:3px;color:var(--muted);font-size:9.5px;white-space:nowrap}
+.dmc-level i{width:6px;height:6px;border-radius:50%}
+.dmc-level b{color:var(--fg2)}
 .live-impact-row{display:flex;flex-direction:column;gap:3px;width:100%;padding:5px 0;border:0;border-top:1px solid var(--line);background:transparent;text-align:left}
 .live-impact-row b{font-size:12px;line-height:1.25}
 .live-impact-row small{font-size:11.5px;line-height:1.25;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -640,7 +661,14 @@ body.big .page{padding-bottom:18px}
   .executive-view .dept .waits,.executive-view .dept .oldest{font-size:10px;line-height:1.2}
   .executive-view .dept-top-issue{font-size:10.5px}
   .executive-view .dept small{font-size:9.5px}
-  .executive-view .department-more{font-size:11px}
+  .executive-view .department-carousel{padding:7px 9px}
+  .executive-view .department-carousel .ch{margin-bottom:4px;min-height:20px}
+  .executive-view .department-slide{gap:5px}
+  .executive-view .dept-mini-card{gap:3px;padding:5px 7px}
+  .executive-view .dmc-head>b{font-size:10.5px}
+  .executive-view .dept-mini-card .dept-top-issue{font-size:9.5px;-webkit-line-clamp:1}
+  .executive-view .dept-mini-card small{font-size:9px}
+  .executive-view .dmc-level{font-size:8.5px}
   .executive-view .tline{min-height:0;overflow:visible;padding:8px 10px}
   .executive-view .weeks{gap:6px}
   .executive-view .wk{gap:3px}
@@ -654,4 +682,15 @@ body.big .page{padding-bottom:18px}
 @media (max-width:1199px){
   .page.executive-view{height:auto;min-height:0;overflow:visible}
   .executive-view .maincol,.executive-view .rail{height:auto;min-height:0;overflow:visible}
+}
+@container main (max-width:980px){
+  .executive-view .imp{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .executive-view .imp>.mx{grid-column:1/-1}
+  .executive-view .depts{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container main (max-width:600px){
+  .executive-view .imp,.executive-view .depts{grid-template-columns:minmax(0,1fr)}
+  .executive-view .imp>.mx{grid-column:auto}
+  .department-slide{grid-template-columns:minmax(0,1fr)}
+  .department-carousel .ch{align-items:flex-start;flex-direction:column}
 }

@@ -138,6 +138,7 @@ export function initDashboard() {'use strict';
     drawer: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
     msgs: [{ who: 'ai', text: 'I can summarize the latest Jira, Confluence, and Bitbucket records after the connected data loads.' }]
   };
+  var departmentSlide = 0;
   var app = document.getElementById('app'), layer = document.getElementById('layer'), tip = document.getElementById('tip');
   var toastTimer, Z = 1;
   var sourceDataReceived = false, liveSourceData = null;
@@ -779,11 +780,11 @@ export function initDashboard() {'use strict';
           var number = issues.filter(function (issue) { return issue.lvl === level; }).length;
           return number ? '<div><i style="background:' + FILL[level] + '"></i>' + esc(levelLabel(level)) + '<b>' + number + '</b></div>' : '';
         }).join('');
-        var clientCount = issues.filter(function (issue) { return Boolean(issue.client); }).length;
+        var clientCount = issues.filter(function (issue) { return liveIssueType(issue) === 'client'; }).length;
         var internalCount = issues.filter(function (issue) { return liveIssueType(issue) === 'internal'; }).length;
         var crossCount = issues.filter(function (issue) { return liveIssueType(issue) === 'cross'; }).length;
         var waitingOnOthers = RISKS.filter(function (issue) {
-          return issue.open && issue.impactedDepartment === department.name;
+          return issue.open && issue.dept !== department.name && issue.impactedDepartment === department.name;
         }).length;
         var holdingOthers = RISKS.filter(function (issue) {
           return issue.open && issue.dept === department.name && liveIssueType(issue) === 'cross';
@@ -806,21 +807,47 @@ export function initDashboard() {'use strict';
             (oldestIssue ? 'Oldest open: ' + oldestIssue.age + ' days' : 'Open age unavailable from Jira') + '</span></button>';
         shown++;
       });
-      var otherDepartments = departmentSummary.slice(featured.length);
+      var featuredNames = {};
+      featured.forEach(function (item) { featuredNames[item.department.name] = true; });
+      var additionalDepartments = departmentSummary.filter(function (item) {
+        return !featuredNames[item.department.name];
+      });
       var emptyDepartments = DEPTS.filter(function (department) {
         return !departmentSummary.some(function (item) { return item.department.name === department.name; });
+      }).map(function (department) {
+        return { department: department, issues: [], highest: 'n' };
       });
-      h += otherDepartments.length || emptyDepartments.length
-        ? '<details class="department-more"><summary>View all ' + DEPTS.length + ' departments' +
-          (otherDepartments.length ? ' · ' + otherDepartments.length + ' more with issues' : '') + '</summary><div>' +
-          otherDepartments.concat(emptyDepartments.map(function (department) { return { department: department, issues: [], highest: 'n' }; }))
-            .map(function (item) {
-              var topIssue = item.issues.slice().sort(function (a, b) { return RANK[a.lvl] - RANK[b.lvl]; })[0];
-              return '<button class="dept-mini" data-dept="' + esc(item.department.name) + '"><b>' + esc(item.department.name) + '</b><span>' +
-                (item.issues.length ? item.issues.length + ' issue' + (item.issues.length === 1 ? '' : 's') + ' · ' + LEVEL[item.highest] + ' · ' + esc(topIssue.key + ' ' + topIssue.risk) : 'No synced issues') +
-                '</span></button>';
-            }).join('') + '</div></details>'
-        : '';
+      additionalDepartments = additionalDepartments.concat(emptyDepartments);
+      var departmentPageCount = Math.ceil(additionalDepartments.length / 2);
+      departmentSlide = Math.max(0, Math.min(departmentSlide, departmentPageCount - 1));
+      if (departmentPageCount) {
+        var pageItems = additionalDepartments.slice(departmentSlide * 2, departmentSlide * 2 + 2);
+        h += '<section class="card department-carousel" aria-label="More departments"><div class="ch">' +
+          '<div><h3>More departments</h3><span class="muted">' + additionalDepartments.length + ' remaining</span></div>' +
+          '<div class="department-carousel-nav"><button class="btn2" data-dept-page="-1"' + (departmentSlide === 0 ? ' disabled' : '') +
+          ' aria-label="Previous departments">← Previous</button><span>' + (departmentSlide + 1) + ' / ' + departmentPageCount + '</span>' +
+          '<button class="btn2" data-dept-page="1"' + (departmentSlide >= departmentPageCount - 1 ? ' disabled' : '') +
+          ' aria-label="Next departments">Next →</button></div></div><div class="department-slide">' +
+          pageItems.map(function (item) {
+            var departmentName = item.department.name;
+            if (!item.issues.length) {
+              return '<button class="dept-mini-card" data-dept="' + esc(departmentName) + '"><span class="dmc-head"><b>' +
+                esc(departmentName) + '</b><span class="pill n">0 open</span></span><small>No open Jira issues</small></button>';
+            }
+            var topIssue = item.issues.slice().sort(bySev)[0];
+            var counts = ['c', 'h', 'm', 'n'].map(function (level) {
+              var number = item.issues.filter(function (issue) { return issue.lvl === level; }).length;
+              return number ? '<span class="dmc-level"><i style="background:' + FILL[level] + '"></i>' +
+                esc(levelLabel(level)) + ' <b>' + number + '</b></span>' : '';
+            }).join('');
+            return '<button class="dept-mini-card" data-dept="' + esc(departmentName) + '">' +
+              '<span class="dmc-head"><b>' + esc(departmentName) + '</b><span class="pill ' + item.highest + '">' +
+              item.issues.length + ' open</span></span><span class="dept-top-issue">' +
+              esc(topIssue.key + ' · ' + topIssue.risk) + '</span><small>' +
+              esc(topIssue.status + (topIssue.client ? ' · affects ' + topIssue.client : '')) +
+              '</small><span class="dmc-counts">' + counts + '</span></button>';
+          }).join('') + '</div></section>';
+      }
     } else DEPTS.forEach(function (d) {
       var all = RISKS.filter(function (r) { return r.dept === d.name; });
       var list = filtered(all);
@@ -1033,7 +1060,7 @@ export function initDashboard() {'use strict';
           });
           return '<p class="callout blue"><b>' + esc(topClient) + '</b> has the most open issues: ' + topRecords.length +
             ' across ' + Object.keys(teamNames).length + ' assigned department' + (Object.keys(teamNames).length === 1 ? '' : 's') + '.</p>' +
-            clients.slice(0, 4).map(function (client) {
+            clients.slice(0, 3).map(function (client) {
               var records = clientIssues[client].slice().sort(bySev), topIssue = records[0];
               var departments = {};
               records.forEach(function (issue) {
@@ -1051,16 +1078,16 @@ export function initDashboard() {'use strict';
             }).join('') +
             '<p class="muted live-unclassified">Financial exposure is not estimated because no validated amount is synced from Jira.</p>';
         })() : '<p class="muted">No open Jira issues have a Client value. Populate the Client field to show affected clients and their linked problems.</p>') + '</div>' +
-        '<div class="card"><div class="ch"><h3>Between departments</h3><span class="pill ' + (crossIssues.length ? 'h' : 'n') + '">' + crossIssues.length + ' handoffs</span></div>' +
-        (topFrom ? '<p class="callout"><b>' + esc(topFrom) + '</b> is the source of ' + fromCounts[topFrom] + ' of ' + crossIssues.length +
-          ' handoffs. Each item below shows the affected department and live Jira status.</p>' : '') +
-        (crossIssues.length ? crossIssues.slice(0, 4).map(function (issue) {
+        '<div class="card live-handoffs"><div class="ch"><h3>Between departments</h3><span class="pill ' + (crossIssues.length ? 'h' : 'n') + '">' + crossIssues.length + ' handoffs</span></div>' +
+        (topFrom ? '<p class="callout"><b>' + esc(topFrom) + '</b> leads ' + fromCounts[topFrom] + ' of ' + crossIssues.length + ' handoffs.</p>' : '') +
+        (crossIssues.length ? crossIssues.slice(0, 2).map(function (issue) {
           return '<button class="flow" data-ev="' + esc(issue.id) + '"><span class="fr"><span class="dchip">' + esc(issue.from) +
             '</span><span class="arr" aria-label="to">→</span><span class="dchip to">' + esc(issue.to) + '</span>' +
             '<span class="pill ' + issue.lvl + '">' + esc(levelLabel(issue.lvl)) + '</span></span>' +
             '<span class="ft">' + esc(issue.key + ' · ' + issue.risk) + '</span>' +
-            '<small>' + esc([issue.status, issue.client ? 'Affects ' + issue.client : '', issue.mitigation ? 'Mitigation: ' + issue.mitigation : ''].filter(Boolean).join(' · ')) + '</small></button>';
-        }).join('') : '<p class="muted">No cross-department handoffs are classified yet. Set both Department and Impacted department on the Jira issue.</p>') +
+            '<small>' + esc([issue.status, issue.client ? 'Affects ' + issue.client : ''].filter(Boolean).join(' · ')) + '</small></button>';
+        }).join('') : '<p class="muted">Set Department and Impacted department in Jira to classify handoffs.</p>') +
+        (crossIssues.length > 2 ? '<button class="more live-handoffs-more" data-live-cross>View all ' + crossIssues.length + ' handoffs</button>' : '') +
         '</div></section>';
       return markup;
     }
@@ -1358,6 +1385,12 @@ export function initDashboard() {'use strict';
       }).sort(bySev);
       title = levelLabel(D.level) + ' · ' + TYPE[D.impactType];
       sub = list.length + ' open Jira issue' + (list.length === 1 ? '' : 's') + ' · most serious first';
+    } else if (D.type === 'live-cross') {
+      list = RISKS.filter(function (issue) {
+        return issue.open && liveIssueType(issue) === 'cross' && matches(issue);
+      }).sort(bySev);
+      title = 'Between departments';
+      sub = list.length + ' open handoff' + (list.length === 1 ? '' : 's') + ' · highest priority first';
     } else if (D.type === 'ptype') {
       list = RISKS.concat(POTENTIAL).filter(function (r) { return r.type === D.t && matches(r); }).sort(bySev);
       title = TYPE[D.t] + ' problems'; sub = TYPE_HINT[D.t] + ' · ' + list.length + ' in total';
@@ -1985,6 +2018,14 @@ export function initDashboard() {'use strict';
       S.drawer = { type: 'live-impact-cell', level: liveImpact[0], impactType: liveImpact[1] };
       S.open = null; tip.hidden = true; renderDrawer(); return;
     }
+    if (t.hasAttribute('data-live-cross')) {
+      S.drawer = { type: 'live-cross' }; S.open = null; tip.hidden = true; renderDrawer(); return;
+    }
+    if ((a = t.getAttribute('data-dept-page'))) {
+      departmentSlide += Number(a);
+      render();
+      return;
+    }
     if ((a = t.getAttribute('data-cell'))) { var pr = a.split('|'); S.drawer = { type: 'cell', area: pr[0], t: pr[1] }; S.open = null; tip.hidden = true; renderDrawer(); return; }
     if ((a = t.getAttribute('data-type'))) { S.drawer = { type: 'ptype', t: a }; S.open = null; tip.hidden = true; renderDrawer(); return; }
     if ((a = t.getAttribute('data-client'))) { S.drawer = { type: 'client', client: a }; S.open = null; renderDrawer(); return; }
@@ -2241,6 +2282,7 @@ export function initDashboard() {'use strict';
   window.addEventListener('xone-source-data', function (event) {
     liveSourceData = event.detail || null;
     sourceDataReceived = true;
+    departmentSlide = 0;
     applyLiveSnapshot();
     S.sev.n = true;
     S.types = { client: true, internal: true, cross: true };
