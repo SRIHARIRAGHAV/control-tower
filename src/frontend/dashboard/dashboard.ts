@@ -1,5 +1,8 @@
 // @ts-nocheck
+var dashboardInitialized = false;
 export function initDashboard() {'use strict';
+  if (dashboardInitialized) return;
+  dashboardInitialized = true;
 
   // =====================================================================
   // SAMPLE DATA — replace with real data. Every number on screen is derived from these lists.
@@ -10,12 +13,14 @@ export function initDashboard() {'use strict';
   var FILL = { c: 'var(--crit)', h: 'var(--high)', m: 'var(--mod)', n: 'var(--ok)' };
 
   // lead = the person to talk to for each department
-  var DEPTS = [
-    { name: 'AI Engineering', short: 'AI Eng', lead: 'Priya R.', normal: 2 },
-    { name: 'Software Engineering', short: 'Software', lead: 'R. Iyer', normal: 3 },
-    { name: 'Digital Marketing & Analytics', short: 'Marketing', lead: 'Vikram T.', normal: 1 },
-    { name: 'QA', short: 'QA', lead: 'Sana N.', normal: 2 }
+  var DEPARTMENT_NAMES = [
+    'Account Management', 'Administration', 'AI Engineering', 'Campaign Services', 'Content', 'CSR',
+    'Digital Analytics', 'Digital Marketing', 'Digital Operations', 'Finance & Legal', "Founder's Office",
+    'HR', 'IT Operations & Support', 'MarTech', 'New Initiatives', 'Operations', 'Partner Management',
+    'Program Management', 'QC', 'Revenue Growth', 'Sal', 'Sales', 'Solutions', 'Strategy & Design',
+    'Xerago Securities'
   ];
+  var DEPTS = DEPARTMENT_NAMES.map(function (name) { return { name: name, short: name, lead: '', normal: 0 }; });
   var STUCK_DAYS = 7;          // an open item older than this counts as "pending too long"
   var HEALTH_TARGET = 80;
   var TOTAL_PROJECTS = 25;
@@ -131,10 +136,11 @@ export function initDashboard() {'use strict';
   var S = {
     view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null, wkOpen: {}, page: null,
     drawer: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
-    msgs: [{ who: 'ai', text: 'Good morning, Vishva. 4 critical risks need action (≈ ₹45 L at stake), 5 items have been pending over a week, and 6 risks are coming in the next 30 days. Pick a topic below or type your own.' }]
+    msgs: [{ who: 'ai', text: 'I can summarize the latest Jira, Confluence, and Bitbucket records after the connected data loads.' }]
   };
   var app = document.getElementById('app'), layer = document.getElementById('layer'), tip = document.getElementById('tip');
   var toastTimer, Z = 1;
+  var sourceDataReceived = false, liveSourceData = null;
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function dateOf(day) { var d = new Date(TODAY); d.setDate(d.getDate() + day); return d; }
@@ -143,11 +149,12 @@ export function initDashboard() {'use strict';
   function count(list, l) { return list.filter(function (r) { return r.lvl === l; }).length; }
   function bySev(a, b) { return RANK[a.lvl] - RANK[b.lvl] || a.day - b.day; }
   function worst(list) { return list.length ? list.slice().sort(bySev)[0].lvl : 'n'; }
+  function levelLabel(level) { return sourceDataReceived && level === 'n' ? 'Other / low / unset' : LEVEL[level]; }
   function matches(r) {
     if (!S.sev[r.lvl]) return false;
     if (r.type && !S.types[r.type]) return false;
     if (!S.q) return true;
-    return (r.dept + ' ' + r.project + ' ' + r.risk + ' ' + r.owner + ' ' + (r.client || '') + ' ' + (r.area || '') + ' ' + TYPE[r.type] + ' ' + (r.from || '') + ' ' + (r.to || '')).toLowerCase().indexOf(S.q.toLowerCase()) >= 0;
+    return (r.dept + ' ' + r.project + ' ' + r.risk + ' ' + r.owner + ' ' + (r.status || '') + ' ' + (r.priority || '') + ' ' + (r.client || '') + ' ' + (r.customerImpact || '') + ' ' + (r.mitigation || '') + ' ' + (r.cooDecision || '') + ' ' + (r.cooApprover || '') + ' ' + (r.approvalDate || '') + ' ' + (r.dueDate || '') + ' ' + (r.area || '') + ' ' + TYPE[r.type] + ' ' + (r.from || '') + ' ' + (r.to || '')).toLowerCase().indexOf(S.q.toLowerCase()) >= 0;
   }
   function filtered(list) { return list.filter(matches); }
 
@@ -192,7 +199,114 @@ export function initDashboard() {'use strict';
     RISKS.forEach(function (r) { if (r.lvl === 'c' || r.blocked) seen[r.project] = true; });
     return Object.keys(seen);
   }
-  function healthScore() { var t = MILESTONES.c + MILESTONES.h + MILESTONES.n; return Math.round((MILESTONES.n + MILESTONES.h * 0.5) / t * 100); }
+  function healthScore() {
+    if (sourceDataReceived) {
+      if (!RISKS.length) return null;
+      var penalty = RISKS.reduce(function (total, issue) {
+        return total + (issue.open ? ({ c: 0.7, h: 0.45, m: 0.25, n: 0.1 }[issue.lvl] || 0) : 0);
+      }, 0);
+      return Math.max(0, Math.round((1 - penalty / RISKS.length) * 100));
+    }
+    var t = MILESTONES.c + MILESTONES.h + MILESTONES.n;
+    return t ? Math.round((MILESTONES.n + MILESTONES.h * 0.5) / t * 100) : null;
+  }
+  function applyLiveSnapshot() {
+    var snapshot = liveSourceData && liveSourceData.snapshot;
+    var issues = snapshot && Array.isArray(snapshot.jiraIssues) ? snapshot.jiraIssues : [];
+    TODAY = new Date();
+    var departmentNames = DEPARTMENT_NAMES.slice();
+    function canonicalDepartment(value) {
+      var label = String(value || '').trim();
+      if (!label) return 'Unassigned';
+      var match = DEPARTMENT_NAMES.filter(function (name) { return name.toLowerCase() === label.toLowerCase(); })[0];
+      if (match) return match;
+      if (departmentNames.indexOf(label) < 0) departmentNames.push(label);
+      return label;
+    }
+    RISKS = issues.map(function (issue) {
+      var priority = (issue.priority || '').trim().toLowerCase();
+      var lvl = ['blocker', 'critical', 'highest', 'urgent'].indexOf(priority) >= 0 ? 'c'
+        : priority === 'high' ? 'h'
+        : ['medium', 'normal'].indexOf(priority) >= 0 ? 'm' : 'n';
+      var status = (issue.status || '').trim().toLowerCase();
+      var isClosed = ['done', 'closed', 'resolved', 'complete', 'completed'].indexOf(status) >= 0;
+      var dept = canonicalDepartment(issue.department);
+      var impactedDept = issue.impactedDepartment ? canonicalDepartment(issue.impactedDepartment) : '';
+      var project = issue.project || 'Jira issue';
+      var createdAt = issue.createdAt || '';
+      var createdDate = createdAt ? new Date(createdAt) : null;
+      var age = createdDate && !Number.isNaN(createdDate.getTime())
+        ? Math.max(0, Math.floor((TODAY.getTime() - createdDate.getTime()) / 86400000)) : 0;
+      var dueDate = issue.dueDate || '';
+      if (!isClosed && dueDate) {
+        var dueAt = new Date(String(dueDate).slice(0, 10) + 'T00:00:00');
+        if (!Number.isNaN(dueAt.getTime())) {
+          var daysUntilDue = Math.round((dueAt.getTime() - new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()).getTime()) / 86400000);
+          if (daysUntilDue < 0) lvl = 'c';
+          else if (daysUntilDue <= 3) lvl = lvl === 'h' ? 'c' : lvl === 'm' ? 'h' : lvl === 'n' ? 'm' : lvl;
+        }
+      }
+      if (!isClosed && status.indexOf('block') >= 0 && RANK[lvl] > RANK.h) lvl = 'h';
+      var decision = (issue.cooDecision || '').trim();
+      var isPendingApproval = Boolean(decision && !/^(approved|rejected|declined)$/i.test(decision))
+        || Boolean(issue.cooApprover && !decision);
+      return {
+        id: issue.key,
+        key: issue.key,
+        dept: dept,
+        project: project,
+        lvl: lvl,
+        open: !isClosed,
+        blocked: status.indexOf('block') >= 0,
+        risk: issue.summary || '',
+        action: issue.mitigation || '',
+        owner: issue.owner || '',
+        status: issue.status || '',
+        priority: issue.priority || '',
+        createdAt: createdAt,
+        age: age,
+        dueDate: dueDate,
+        impactedDepartment: impactedDept,
+        from: impactedDept ? dept : '',
+        to: impactedDept,
+        type: impactedDept && dept !== 'Unassigned' ? 'cross' : undefined,
+        client: issue.client || '',
+        customerImpact: issue.customerImpact || '',
+        mitigation: issue.mitigation || '',
+        cooDecision: issue.cooDecision || '',
+        cooApprover: issue.cooApprover || '',
+        approvalDate: issue.approvalDate || '',
+        pendingApproval: isPendingApproval
+      };
+    });
+    var today = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    POTENTIAL = RISKS.filter(function (issue) {
+      if (!issue.open || !issue.dueDate) return false;
+      var dueDate = new Date(String(issue.dueDate).slice(0, 10) + 'T00:00:00');
+      var days = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
+      return !Number.isNaN(dueDate.getTime()) && days >= 0 && days <= 30;
+    }).map(function (issue) {
+      return Object.assign({}, issue, { id: 'p_' + issue.id, day: Math.round(
+        (new Date(String(issue.dueDate).slice(0, 10) + 'T00:00:00').getTime() - today.getTime()) / 86400000
+      ) });
+    });
+    PENDING = RISKS.filter(function (issue) { return issue.pendingApproval; })
+      .map(function (issue) {
+        return Object.assign({}, issue, { id: 's_' + issue.id, day: -issue.age });
+      });
+    PLAN = [];
+    DECISIONS = RISKS.filter(function (issue) { return issue.pendingApproval; });
+    NOTIFS = [];
+    MILESTONES = {
+      c: count(RISKS, 'c'),
+      h: count(RISKS, 'h'),
+      n: RISKS.filter(function (issue) { return issue.lvl === 'm' || issue.lvl === 'n'; }).length
+    };
+    TOTAL_PROJECTS = DEPARTMENT_NAMES.length;
+    DEPTS = departmentNames.map(function (name) {
+      return { name: name, short: name, lead: '', normal: 0 };
+    });
+  }
 
   // ---- charts ----
   function donut(parts, center, sub, size) {
@@ -223,7 +337,11 @@ export function initDashboard() {'use strict';
       if (n.sub && S.nav[n.k]) h += '<div class="sub">' + n.sub.map(function (x, i) {
         var page = { 'Weekly brief': 'weekly', 'Board pack': 'board', 'Budget': 'budget', 'Spend': 'spend', 'Risk register': 'register', 'Mitigations': 'mitig' }[x[0]];
         var active = (S.page && S.page === page) || (!S.page && n.k === 'dash' && i === 0);
-        return '<a href="' + x[1] + '"' + (active ? ' class="on"' : '') + '>' + x[0] + '</a>';
+        var label = x[0];
+        var target = sourceDataReceived && n.k === 'dash'
+          ? { Overview: '#top', Impact: '#sec-impact', Departments: '#sec-depts', Projects: '#sec-depts', Timeline: '#sec-timeline' }[x[0]]
+          : x[1];
+        return '<a href="' + (target || x[1]) + '"' + (active ? ' class="on"' : '') + '>' + label + '</a>';
       }).join('') + '</div>';
     });
     document.getElementById('menu').innerHTML = h;
@@ -247,14 +365,259 @@ export function initDashboard() {'use strict';
   function stuckItems() { return PENDING.filter(function (p) { return p.age > STUCK_DAYS; }); }
   function stakeOpen() { return criticalOpen().reduce(function (a, r) { return a + (r.stake || 0); }, 0); }
 
+  function renderLiveDashboard() {
+    if (!sourceDataReceived) {
+      app.innerHTML = '<section class="card"><div class="ch"><h3>Connected source data</h3></div><p class="muted">Loading the latest Jira, Confluence, and Bitbucket records…</p></section>';
+      return;
+    }
+
+    var snapshot = liveSourceData && liveSourceData.snapshot;
+    var state = liveSourceData && liveSourceData.state;
+    var jiraIssues = snapshot ? snapshot.jiraIssues : [];
+    var confluencePages = snapshot ? snapshot.confluencePages : [];
+    var repositories = snapshot ? snapshot.bitbucketRepositories : [];
+    var closed = { done: true, closed: true, resolved: true, complete: true, completed: true };
+    function level(issue) {
+      var priority = (issue.priority || '').toLowerCase();
+      return ['blocker', 'critical', 'highest', 'urgent'].indexOf(priority) >= 0 ? 'c'
+        : priority === 'high' ? 'h'
+        : ['medium', 'normal'].indexOf(priority) >= 0 ? 'm' : 'n';
+    }
+    function isOpen(issue) {
+      var status = (issue.status || '').trim().toLowerCase();
+      return !closed[status];
+    }
+    function isBlocked(issue) { return (issue.status || '').toLowerCase().indexOf('block') >= 0; }
+    function isHigh(issue) { return ['blocker', 'critical', 'highest', 'urgent', 'high'].indexOf((issue.priority || '').toLowerCase()) >= 0; }
+    function visibleIssue(issue) {
+      var l = level(issue);
+      return (l === 'n' || S.sev[l]) &&
+        (!S.q || [issue.key, issue.summary, issue.project, issue.status, issue.priority].join(' ').toLowerCase().indexOf(S.q.toLowerCase()) >= 0);
+    }
+    function sourceStatus(key) {
+      var item = state && state[key];
+      if (!item) return 'Not synced';
+      return item.state === 'connected'
+        ? 'Connected · ' + item.count + ' records'
+        : item.message + (item.syncedAt ? ' Last successful sync: ' + new Date(item.syncedAt).toLocaleString() + '.' : '');
+    }
+    var activeIssues = jiraIssues.filter(isOpen);
+    var blockedIssues = activeIssues.filter(isBlocked);
+    var highIssues = activeIssues.filter(isHigh);
+    var urgentIssues = activeIssues.filter(function (issue) { return ['blocker', 'critical', 'highest', 'urgent'].indexOf((issue.priority || '').toLowerCase()) >= 0; });
+    var filteredHighIssues = highIssues.filter(visibleIssue);
+    var visiblePages = confluencePages.filter(function (page) {
+      return !S.q || [page.title, page.space, page.id].join(' ').toLowerCase().indexOf(S.q.toLowerCase()) >= 0;
+    });
+    var visibleRepositories = repositories.filter(function (repository) {
+      return !S.q || [repository.name, repository.fullName].join(' ').toLowerCase().indexOf(S.q.toLowerCase()) >= 0;
+    });
+    var searchInput = document.getElementById('q');
+    if (searchInput) searchInput.placeholder = 'Search issues, pages, repositories';
+    var mixed = state && Object.keys(state).some(function (key) { return state[key].state === 'error'; });
+    var updated = document.querySelector('.updated');
+    if (updated) updated.textContent = snapshot && snapshot.syncedAt
+      ? 'Last synced ' + new Date(snapshot.syncedAt).toLocaleString()
+      : 'Source sync unavailable';
+    var notice = document.getElementById('source-data-notice');
+    if (notice) {
+      notice.hidden = false;
+      notice.textContent = snapshot
+        ? 'Live source records · last synced ' + new Date(snapshot.syncedAt).toLocaleString() + '. Jira due dates and configured custom fields are shown when available.'
+        : 'No live source snapshot is available yet. Check source access and sync status.';
+    }
+
+    var unsupportedPages = {
+      budget: ['Budget', 'Financial values are not provided by the connected Jira, Confluence, or Bitbucket metadata.'],
+      spend: ['Spend', 'Cost, vendor, and usage data are not provided by the connected sources.'],
+      mitig: ['Mitigations', 'The current source data does not include mitigation plans or action owners.'],
+      ana: ['Analytics', 'Historical snapshots are not available, so trends and anomaly detection cannot be calculated.'],
+      perf: ['Performance', 'Commit, pull-request, deployment, and cycle-time data are not included in the current sync.']
+    };
+    if (S.page && unsupportedPages[S.page]) {
+      app.classList.add('page-view');
+      app.innerHTML = '<section class="full-page" aria-labelledby="live-page-title"><header class="full-page-heading"><div><p class="eyebrow">CONTROL TOWER</p><h1 id="live-page-title">' +
+        esc(unsupportedPages[S.page][0]) + '</h1><p class="muted">' + esc(unsupportedPages[S.page][1]) +
+        '</p></div><button class="btn2" data-page="dash">← Dashboard</button></header><div class="full-page-content"><section class="card"><p class="muted">' +
+        esc(unsupportedPages[S.page][1]) + '</p></section></div></section>';
+      return;
+    }
+    var h = '<div class="maincol">';
+    if (S.page) {
+      var pageTitles = { weekly: 'Weekly brief', board: 'Board pack', register: 'Risk register' };
+      h += '<header class="live-page-heading"><p class="eyebrow">CONTROL TOWER</p><h1>' + esc(pageTitles[S.page] || 'Connected source data') +
+        '</h1><p class="muted">Built from the latest synced records; no sample metrics or unsupported forecasts.</p></header>';
+    }
+    h += '<section class="verdict v-' + (urgentIssues.length ? 'c' : blockedIssues.length ? 'h' : 'n') + '" aria-label="Live source summary"><span class="vdot"></span><p><b>' +
+      (mixed ? 'Source sync needs attention:' : snapshot ? 'Live source data:' : 'Live data is not available:') + '</b> ' +
+      jiraIssues.length + ' Jira issues · ' + confluencePages.length + ' Confluence pages · ' + repositories.length + ' Bitbucket repositories.' +
+      (urgentIssues.length || blockedIssues.length
+        ? '<small>' + urgentIssues.length + ' open urgent-priority · ' + blockedIssues.length + ' blocked · ' + activeIssues.length + ' open Jira issues. These are current indicators, not forecasts.</small>'
+        : '<small>Counts are from the latest connected-source snapshot; no sample metrics or financial estimates are used.</small>') +
+      '</p></section>';
+
+    h += '<section class="kpis live-kpis" id="top" aria-label="Live source metrics">';
+    [
+      ['Jira issues', jiraIssues.length, 'Jira records returned by sync'],
+      ['Open Jira issues', activeIssues.length, 'Status is not Done, Closed, or Resolved'],
+      ['Blocked issues', blockedIssues.length, 'Open issues with a blocked status'],
+      ['High / urgent priority', highIssues.length, 'Open issues marked High or above'],
+      ['Confluence pages', confluencePages.length, 'Synced page metadata'],
+      ['Bitbucket repositories', repositories.length, 'Synced repository metadata'],
+    ].forEach(function (metric, index) {
+      h += '<article class="card kpi k-' + (index === 2 && blockedIssues.length ? 'c' : index === 3 && highIssues.length ? 'h' : 'n') + '">' +
+        '<div class="ch"><h3>' + esc(metric[0]) + '</h3></div>' +
+        '<div class="big"><span class="n num">' + metric[1] + '</span></div>' +
+        '<p class="def">' + esc(metric[2]) + '</p></article>';
+    });
+    h += '</section>';
+
+    h += '<div class="sect" id="sec-impact"><h2>Jira priority overview</h2><span class="muted">Current issue priority · no forecast</span></div>';
+    h += '<section class="card forge-items-group" aria-label="Jira issue priority overview">';
+    [
+      ['Urgent / critical', jiraIssues.filter(function (issue) { return level(issue) === 'c'; }).length, 'c'],
+      ['High', jiraIssues.filter(function (issue) { return level(issue) === 'h'; }).length, 'h'],
+      ['Medium', jiraIssues.filter(function (issue) { return level(issue) === 'm'; }).length, 'm'],
+      ['Other / unset', jiraIssues.filter(function (issue) { return level(issue) === 'n'; }).length, 'n'],
+    ].forEach(function (priority) {
+      h += '<div class="cli live-record"><span class="dot" style="background:' + FILL[priority[2]] + '"></span><span class="nm">' + esc(priority[0]) +
+        '</span><span class="amt">' + priority[1] + '</span><small>Synced Jira issues</small></div>';
+    });
+    h += '</section>';
+
+    h += '<div class="sect" id="sec-depts"><h2>Departments</h2><span class="muted">Top six departments by highest live issue priority</span></div>';
+    var departmentRecords = {};
+    jiraIssues.filter(visibleIssue).forEach(function (issue) {
+      var name = issue.department || 'Unassigned';
+      var record = departmentRecords[name] || (departmentRecords[name] = { total: 0, open: 0, blocked: 0, critical: 0, high: 0, issues: [] });
+      record.total++;
+      if (isOpen(issue)) record.open++;
+      if (isOpen(issue) && isBlocked(issue)) record.blocked++;
+      if (isOpen(issue) && level(issue) === 'c') record.critical++;
+      if (isOpen(issue) && level(issue) === 'h') record.high++;
+      record.issues.push(issue);
+    });
+    var departmentNames = Object.keys(departmentRecords).sort(function (a, b) {
+      var A = departmentRecords[a], B = departmentRecords[b];
+      return B.critical - A.critical || B.high - A.high || B.open - A.open || a.localeCompare(b);
+    }).slice(0, 6);
+    h += '<section class="card forge-items-group" aria-label="Departments">';
+    h += departmentNames.length ? departmentNames.map(function (name) {
+      var record = departmentRecords[name], topIssue = record.issues.slice().sort(function (a, b) {
+        return ({ c: 0, h: 1, m: 2, n: 3 }[level(a)] - { c: 0, h: 1, m: 2, n: 3 }[level(b)]);
+      })[0];
+      return '<div class="cli live-record"><span class="dot" style="background:' + (record.blocked ? 'var(--crit)' : 'var(--ok)') + '"></span>' +
+        '<span class="nm">' + esc(name) + '</span><span class="amt">' + record.open + ' open</span>' +
+        '<small>' + esc(topIssue.key + ' · ' + topIssue.summary + ' · ' + topIssue.priority) + '</small></div>';
+    }).join('') : '<p class="muted">No department is assigned to the synced issues. Add and map a Department field in Jira.</p>';
+    h += '</section>';
+
+    h += '<div class="sect"><h2>Jira issues needing attention</h2><span class="muted">Current status and priority only</span></div>';
+    h += '<section class="card forge-items-group" aria-label="Jira issues needing attention">';
+    if (filteredHighIssues.length) {
+      h += filteredHighIssues.slice().sort(function (a, b) {
+        return ({ c: 0, h: 1, m: 2, n: 3 }[level(a)] - { c: 0, h: 1, m: 2, n: 3 }[level(b)]) || a.key.localeCompare(b.key);
+      }).map(function (issue) {
+        return '<div class="cli live-record" role="group" aria-label="' + esc(issue.key + ' ' + issue.summary) + '">' +
+          '<span class="dot" style="background:' + FILL[level(issue)] + '"></span><span class="nm">' + esc(issue.key + ' · ' + issue.summary) + '</span>' +
+          '<span class="amt">' + esc(issue.priority) + '</span><small>' + esc(issue.project + ' · ' + issue.status) + '</small></div>';
+      }).join('');
+    } else {
+      h += '<p class="muted">' + (jiraIssues.length ? 'No open Jira issues have High or higher priority.' : 'No Jira issues were returned. Check the Jira project key and browse permission.') + '</p>';
+    }
+    h += '</section>';
+
+    h += '<div class="sect"><h2>All synced Jira issues</h2><span class="muted">' + jiraIssues.length + ' total</span></div>';
+    h += '<section class="card forge-items-group" aria-label="All synced Jira issues">';
+    var matchedIssues = jiraIssues.filter(visibleIssue);
+    if (matchedIssues.length) {
+      h += matchedIssues.map(function (issue) {
+        return '<div class="cli live-record" role="group" aria-label="' + esc(issue.key + ' ' + issue.summary) + '">' +
+          '<span class="dot" style="background:' + FILL[level(issue)] + '"></span><span class="nm">' + esc(issue.key + ' · ' + issue.summary) + '</span>' +
+          '<span class="amt">' + esc(issue.priority) + '</span><small>' + esc(issue.project + ' · ' + issue.status + (issue.updated ? ' · updated ' + new Date(issue.updated).toLocaleDateString() : '')) + '</small></div>';
+      }).join('');
+    } else {
+      h += '<p class="muted">No Jira issues match the current search and risk filters.</p>';
+    }
+    h += '</section>';
+
+    var recentIssues = jiraIssues.filter(function (issue) { return visibleIssue(issue) && issue.updated; }).sort(function (a, b) {
+      return new Date(b.updated).getTime() - new Date(a.updated).getTime();
+    });
+    h += '<div class="sect" id="sec-timeline"><h2>Recently updated Jira issues</h2><span class="muted">Sorted by Jira updated timestamp · deadlines appear in the issue timeline</span></div>';
+    h += '<section class="card forge-items-group" aria-label="Recently updated Jira issues">';
+    h += recentIssues.length ? recentIssues.map(function (issue) {
+      return '<div class="cli live-record" role="group" aria-label="' + esc(issue.key + ' ' + issue.summary) + '">' +
+        '<span class="dot" style="background:' + FILL[level(issue)] + '"></span><span class="nm">' + esc(issue.key + ' · ' + issue.summary) + '</span>' +
+        '<span class="amt">' + esc(new Date(issue.updated).toLocaleDateString()) + '</span><small>' + esc(issue.project + ' · ' + issue.status + ' · ' + issue.priority) + '</small></div>';
+    }).join('') : '<p class="muted">No issues with an update timestamp match the current filters.</p>';
+    h += '</section></div>';
+
+    h += '<aside class="rail" aria-label="Connected-source records">';
+    h += '<section class="card"><div class="ch"><h3>Connected data sources</h3></div>' +
+      '<div class="sys"><span class="sn">Jira</span><span>' + esc(sourceStatus('jira')) + '</span></div>' +
+      '<div class="sys"><span class="sn">Confluence</span><span>' + esc(sourceStatus('confluence')) + '</span></div>' +
+      '<div class="sys"><span class="sn">Bitbucket</span><span>' + esc(sourceStatus('bitbucket')) + '</span></div>' +
+      '<p class="muted" style="margin-top:10px">Page text, repository files, pull requests, and issue history are not included in this analysis. Jira due dates and configured custom fields are included when available.</p></section>';
+
+    h += '<section class="card"><div class="ch"><h3>Confluence pages</h3><span class="pill ' + (visiblePages.length ? 'n' : 'm') + '">' + visiblePages.length + '</span></div>';
+    h += visiblePages.length ? visiblePages.map(function (page) {
+      var href = page.url ? (page.url.indexOf('http') === 0 ? page.url : 'https://' + window.location.host + page.url) : '';
+      return '<p class="forge-source">' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noreferrer">' : '<span>') +
+        esc(page.title) + (href ? '</a>' : '</span>') + '<small>Space ID: ' + esc(page.space) + '</small></p>';
+    }).join('') : '<p class="muted">' + (confluencePages.length ? 'No Confluence pages match the current search.' : 'No Confluence pages were returned by the latest sync.') + '</p>';
+    h += '</section>';
+
+    h += '<section class="card"><div class="ch"><h3>Bitbucket repositories</h3><span class="pill ' + (visibleRepositories.length ? 'n' : 'm') + '">' + visibleRepositories.length + '</span></div>';
+    h += visibleRepositories.length ? visibleRepositories.map(function (repository) {
+      return '<p class="forge-source">' + (repository.url
+        ? '<a href="' + esc(repository.url) + '" target="_blank" rel="noreferrer">' + esc(repository.fullName) + '</a>'
+        : '<span>' + esc(repository.fullName) + '</span>') +
+        '<small>' + esc(repository.updated ? new Date(repository.updated).toLocaleDateString() : 'Updated date unavailable') + '</small></p>';
+    }).join('') : '<p class="muted">' + (repositories.length ? 'No Bitbucket repositories match the current search.' : 'No Bitbucket repositories were returned by the latest sync.') + '</p>';
+    h += '</section></aside>';
+    app.innerHTML = h;
+    app.classList.remove('page-view');
+    alignNames();
+    if (innerWidth >= 1200 && typeof fit === 'function') requestAnimationFrame(fit);
+  }
+
   function render() {
+    if (!sourceDataReceived) {
+      app.classList.remove('executive-view');
+      var loadingNotice = document.getElementById('source-data-notice');
+      if (loadingNotice) loadingNotice.hidden = false;
+      app.innerHTML = '';
+      return;
+    }
+    app.classList.toggle('executive-view', !S.page);
     if (S.page) { renderFullPage(); return; }
-    var sampleNotice = document.getElementById('sample-data-notice');
-    if (sampleNotice) sampleNotice.hidden = false;
+    var updatedLabel = document.querySelector('.updated');
+    if (updatedLabel) updatedLabel.textContent = liveSourceData && liveSourceData.snapshot && liveSourceData.snapshot.syncedAt
+      ? 'Last synced ' + new Date(liveSourceData.snapshot.syncedAt).toLocaleString()
+      : 'Source sync unavailable';
+    var issueSearch = document.getElementById('q');
+    if (issueSearch) issueSearch.placeholder = 'Search Jira issues, departments, and clients';
     app.classList.remove('page-view');
     var V = VIEWS[S.view];
     var critOpen = criticalOpen(), off = offTrackProjects(), stuck = stuckItems();
     var stake = stakeOpen(), score = healthScore();
+    var pendingApprovals = RISKS.filter(function (issue) { return issue.pendingApproval; });
+    var unknownApprovalAge = pendingApprovals.filter(function (issue) {
+      return !issue.createdAt || Number.isNaN(new Date(issue.createdAt).getTime());
+    }).length;
+    var affectedClients = {};
+    RISKS.forEach(function (issue) { if (issue.client) affectedClients[issue.client] = true; });
+    var affectedClientCount = Object.keys(affectedClients).length;
+    var bitbucketRepositories = liveSourceData && liveSourceData.snapshot
+      ? liveSourceData.snapshot.bitbucketRepositories || [] : [];
+    var bitbucketCommits = bitbucketRepositories.reduce(function (all, repository) {
+      return all.concat((repository.recentCommits || []).map(function (commit) {
+        return { repository: repository.fullName, commit: commit };
+      }));
+    }, []).sort(function (a, b) {
+      return new Date(b.commit.date).getTime() - new Date(a.commit.date).getTime();
+    });
     var h = '<div class="maincol">';
 
     function topDept(list) {
@@ -267,74 +630,103 @@ export function initDashboard() {'use strict';
     // ---- verdict banner: the 5-second answer ----
     var verdict = critOpen.length ? 'c' : stuck.length ? 'h' : POTENTIAL.length ? 'm' : 'n';
     h += '<section class="verdict v-' + verdict + '" aria-label="Today in one line"><span class="vdot"></span>' +
-      '<p><b>' + ACT[verdict] + ':</b> ' + critOpen.length + ' critical problems need action (≈ ₹' + stake + ' L at stake) · ' +
-      stuck.length + ' items stuck over ' + STUCK_DAYS + ' days · ' + POTENTIAL.length + ' risks coming in 30 days' +
-      (function () {
+      (sourceDataReceived
+        ? '<p><b>Latest synced data:</b> ' + (liveSourceData.snapshot ? liveSourceData.snapshot.jiraIssues.length : '—') + ' Jira issues · ' +
+          (liveSourceData.snapshot ? liveSourceData.snapshot.confluencePages.length : '—') + ' Confluence pages · ' +
+          (liveSourceData.snapshot ? liveSourceData.snapshot.bitbucketRepositories.length : '—') + ' Bitbucket repositories · ' +
+          bitbucketCommits.length + ' recent Bitbucket commits.' +
+          '<small>Commit activity is from the latest 10 commits per repository. Health and deadline indicators below use current Jira status, priority, due date, and configured fields; they are not predictions.</small></p>'
+        : '<p><b>' + ACT[verdict] + ':</b> ' + critOpen.length + ' critical problems need action (≈ ₹' + stake + ' L at stake) · ' +
+          stuck.length + ' items stuck over ' + STUCK_DAYS + ' days · ' + POTENTIAL.length + ' risks coming in 30 days' +
+          (function () {
         var all = RISKS.concat(POTENTIAL), cl = {};
         all.forEach(function (r) { if (r.client) cl[r.client] = 1; });
         return '<small>Of ' + all.length + ' problems: ' + ['client', 'internal', 'cross'].map(function (t) {
           return tyChip(t, all.filter(function (r) { return r.type === t; }).length + ' ' + TYPE[t].toLowerCase());
         }).join('') + '<span>· ' + Object.keys(cl).length + ' clients exposed</span></small>';
-      })() + '</p></section>';
+          })() + '</p>') + '</section>';
 
     // ---- row 1: five KPI cards — health, delivery, now, stuck, next ----
     h += '<section class="kpis" id="top" aria-label="Key numbers">';
 
-    var hl = score >= HEALTH_TARGET ? 'n' : score >= 70 ? 'm' : 'h';
+    var hl = sourceDataReceived
+      ? score === null ? 'n' : score >= 80 ? 'n' : score >= 60 ? 'm' : score >= 40 ? 'h' : 'c'
+      : score >= HEALTH_TARGET ? 'n' : score >= 70 ? 'm' : 'h';
     var drag = topDept(RISKS.filter(function (r) { return r.lvl === 'c'; }));
-    h += '<div class="card kpi healthk k-' + hl + '"><div class="ch"><h3>Overall health</h3>' + statusPill(hl) + '</div>' +
-      '<p class="def">Milestones on plan · target ' + HEALTH_TARGET + '</p><div class="health">' +
-      donut([['Critical', MILESTONES.c, FILL.c], ['High risk', MILESTONES.h, FILL.h], ['Normal', MILESTONES.n, FILL.n]], score, 'of 100') +
-      '<div class="legend">' + [['c', MILESTONES.c], ['h', MILESTONES.h], ['n', MILESTONES.n]].map(function (x) {
-        return '<div><i style="background:' + FILL[x[0]] + '"></i><b>' + x[1] + '</b><span>' + LEVEL[x[0]] + '</span></div>';
-      }).join('') + '</div></div>' +
-      talkIfIgnored(leadOf(drag.name).lead, leadOf(drag.name).short, 'health falls to ≈ ' + (score + V.health[0]) + ' next month') +
-      '<div class="foot">' + delta(V.health[0], V.health[1], false) + '</div></div>';
+    h += '<div class="card kpi healthk k-' + hl + '"><div class="ch"><h3>Overall health</h3>' +
+      (sourceDataReceived ? '<span class="pill ' + hl + '">' + (score === null ? 'No issues' : score >= 80 ? 'Healthy' : score >= 60 ? 'Watch' : score >= 40 ? 'At risk' : 'Critical') + '</span>' : statusPill(hl)) + '</div>' +
+      (sourceDataReceived
+        ? '<p class="def">Rule-based index from live status, priority, and deadline signals; not a forecast.</p><div class="health">' +
+          donut([['Critical', MILESTONES.c, FILL.c], ['High risk', MILESTONES.h, FILL.h], ['Other', MILESTONES.n, FILL.n]], score === null ? '—' : score, 'of 100') +
+          '<div class="legend">' + [['c', MILESTONES.c, 'Critical'], ['h', MILESTONES.h, 'High risk'], ['n', MILESTONES.n, 'Other']].map(function (x) {
+            return '<div><i style="background:' + FILL[x[0]] + '"></i><b>' + x[1] + '</b><span>' + x[2] + '</span></div>';
+          }).join('') + '</div></div>'
+        : '<p class="def">Milestones on plan · target ' + HEALTH_TARGET + '</p><div class="health">' +
+          donut([['Critical', MILESTONES.c, FILL.c], ['High risk', MILESTONES.h, FILL.h], ['Normal', MILESTONES.n, FILL.n]], score, 'of 100') +
+          '<div class="legend">' + [['c', MILESTONES.c], ['h', MILESTONES.h], ['n', MILESTONES.n]].map(function (x) {
+            return '<div><i style="background:' + FILL[x[0]] + '"></i><b>' + x[1] + '</b><span>' + LEVEL[x[0]] + '</span></div>';
+          }).join('') + '</div></div>' +
+          (drag ? talkIfIgnored(leadOf(drag.name).lead, leadOf(drag.name).short, 'health falls to ≈ ' + (score + V.health[0]) + ' next month') : '') +
+          '<div class="foot">' + delta(V.health[0], V.health[1], false) + '</div>') +
+      '</div>';
 
     var offRisks = off.map(function (n) { return RISKS.filter(function (r) { return r.project === n && (r.lvl === 'c' || r.blocked); }).sort(bySev)[0]; });
     var offTop = topDept(offRisks), offNext = first(offRisks), offPct = Math.round(off.length / TOTAL_PROJECTS * 100);
     var ol = offPct >= 20 ? 'c' : offPct >= 10 ? 'h' : 'n';
-    h += '<button class="card click kpi k-' + ol + '" data-open="offtrack"><div class="ch"><h3>Projects off track</h3>' + statusPill(ol) + '</div>' +
-      '<p class="def">Projects with a critical issue or blocker</p>' +
-      '<div class="offtrack">' + donut([['Off track', off.length, FILL.c], ['On track', TOTAL_PROJECTS - off.length, 'var(--grid)']], off.length, 'of ' + TOTAL_PROJECTS) +
-      '<span class="cap">' + offPct + '% of all projects</span></div>' +
-      talkIfIgnored(leadOf(offTop.name).lead, offTop.n + ' of ' + off.length + ' in ' + leadOf(offTop.name).short, esc(offNext.project) + ' slips ' + short(offNext.day)) +
-      '<div class="foot">' + delta(V.off[0], V.off[1], true) + '</div></button>';
+    h += sourceDataReceived
+      ? '<article class="card kpi"><div class="ch"><h3>Clients affected</h3><span class="pill ' + (affectedClientCount ? 'h' : 'n') + '">' + affectedClientCount + '</span></div><p class="def">Distinct clients named on synced Jira issues</p><div class="big"><span class="n num">' + affectedClientCount + '</span><span class="what">clients</span></div></article>'
+      : '<button class="card click kpi k-' + ol + '" data-open="offtrack"><div class="ch"><h3>Projects off track</h3>' + statusPill(ol) + '</div>' +
+        '<p class="def">Projects with a critical issue or blocker</p>' +
+        '<div class="offtrack">' + donut([['Off track', off.length, FILL.c], ['On track', TOTAL_PROJECTS - off.length, 'var(--grid)']], off.length, 'of ' + TOTAL_PROJECTS) +
+        '<span class="cap">' + offPct + '% of all projects</span></div>' +
+        (offTop && offNext ? talkIfIgnored(leadOf(offTop.name).lead, offTop.n + ' of ' + off.length + ' in ' + leadOf(offTop.name).short, esc(offNext.project) + ' slips ' + short(offNext.day)) : '') +
+        '<div class="foot">' + delta(V.off[0], V.off[1], true) + '</div></button>';
 
     var critNext = first(critOpen), prog = count(RISKS, 'c') - critOpen.length;
-    h += '<button class="card click kpi k-' + (critOpen.length ? 'c' : 'n') + '" data-open="critical"><div class="ch"><h3>Critical risks · now</h3>' + statusPill(critOpen.length ? 'c' : 'n') + '</div>' +
-      '<p class="def">Problems hurting delivery or revenue today</p>' +
-      '<div class="big"><span class="n num" style="color:var(--crit-ink)">' + critOpen.length + '</span><span class="what">need action</span></div>' +
-      '<div class="kviz"><div class="split" role="img" aria-label="' + critOpen.length + ' need action, ' + prog + ' in progress">' +
+    h += '<button class="card click kpi k-' + (critOpen.length ? 'c' : 'n') + '" data-open="critical"><div class="ch"><h3>' + (sourceDataReceived ? 'Critical issues' : 'Critical risks · now') + '</h3>' + (sourceDataReceived ? '<span class="pill ' + (critOpen.length ? 'c' : 'n') + '">' + (critOpen.length ? 'Open' : 'None') + '</span>' : statusPill(critOpen.length ? 'c' : 'n')) + '</div>' +
+      '<p class="def">' + (sourceDataReceived ? 'Critical priority, overdue deadlines, or other urgent live signals; grouped by Department' : 'Problems hurting delivery or revenue today') + '</p>' +
+      '<div class="big"><span class="n num" style="color:var(--crit-ink)">' + critOpen.length + '</span><span class="what">' + (sourceDataReceived ? 'open issues' : 'need action') + '</span></div>' +
+      '<div class="kviz"><div class="split" role="img" aria-label="' + (sourceDataReceived ? critOpen.length + ' open critical-priority Jira issues' : critOpen.length + ' need action, ' + prog + ' in progress') + '">' +
         '<span style="flex:' + critOpen.length + ';background:var(--crit)" data-tip="' + critOpen.length + ' need action"></span>' +
-        (prog ? '<span class="prog" style="flex:' + prog + '" data-tip="' + prog + ' already being fixed"></span>' : '') + '</div>' +
-        '<div class="vkey"><span><i style="background:var(--crit)"></i>' + critOpen.length + ' need action</span>' + (prog ? '<span><i class="prog"></i>' + prog + ' being fixed</span>' : '') + '</div></div>' +
-      talkIfIgnored(critNext.owner, critNext.project, '≈ ₹' + stake + ' L lost this week') +
-      '<div class="foot">' + delta(V.crit[0], V.crit[1], true) + '</div></button>';
+        (prog && !sourceDataReceived ? '<span class="prog" style="flex:' + prog + '" data-tip="' + prog + ' already being fixed"></span>' : '') + '</div>' +
+        '<div class="vkey"><span><i style="background:var(--crit)"></i>' + critOpen.length + (sourceDataReceived ? ' open' : ' need action') + '</span>' + (prog && !sourceDataReceived ? '<span><i class="prog"></i>' + prog + ' being fixed</span>' : '') + '</div></div>' +
+      (sourceDataReceived ? '' : critNext ? talkIfIgnored(critNext.owner, critNext.project, '≈ ₹' + stake + ' L lost this week') : '') +
+      (sourceDataReceived ? '' : '<div class="foot">' + delta(V.crit[0], V.crit[1], true) + '</div>') + '</button>';
 
-    var oldest = stuck.slice().sort(function (a, b) { return b.age - a.age; })[0];
+    var approvalOrder = pendingApprovals.slice().sort(function (a, b) { return b.age - a.age; });
+    var oldest = (sourceDataReceived ? approvalOrder : stuck.slice().sort(function (a, b) { return b.age - a.age; }))[0];
     var maxAge = oldest ? oldest.age : 1;
-    var sl = !stuck.length ? 'n' : maxAge > 14 ? 'c' : 'h';
-    h += '<button class="card click kpi k-' + sl + '" data-open="stuck"><div class="ch"><h3>Pending too long</h3>' + statusPill(sl) + '</div>' +
-      '<p class="def">Actions or decisions open over ' + STUCK_DAYS + ' days</p>' +
-      '<div class="big"><span class="n num" style="color:var(--' + (sl === 'c' ? 'crit' : 'high') + '-ink)">' + stuck.length + '</span><span class="what">stuck · oldest ' + maxAge + ' d</span></div>' +
-      '<div class="kviz ages" role="img" aria-label="How long each item has been open">' +
+    var sl = !oldest ? 'n' : maxAge > 14 ? 'c' : 'h';
+    var overdueApprovalCount = pendingApprovals.filter(function (issue) { return issue.age > STUCK_DAYS; }).length;
+    h += '<button class="card click kpi k-' + sl + '" data-open="stuck"><div class="ch"><h3>' + (sourceDataReceived ? 'Pending approvals' : 'Pending too long') + '</h3>' +
+      (sourceDataReceived ? '<span class="pill ' + (pendingApprovals.length ? 'h' : 'n') + '">' + pendingApprovals.length + ' pending' + (overdueApprovalCount ? ' · ' + overdueApprovalCount + ' over ' + STUCK_DAYS + ' d' : '') + '</span>' : statusPill(sl)) + '</div>' +
+      '<p class="def">' + (sourceDataReceived ? 'COO decisions awaiting action · age from Jira Created date' : 'Actions or decisions open over ' + STUCK_DAYS + ' days') + '</p>' +
+      '<div class="big"><span class="n num" style="color:var(--' + (sl === 'c' ? 'crit' : 'high') + '-ink)">' + (sourceDataReceived ? pendingApprovals.length : stuck.length) + '</span><span class="what">' + (sourceDataReceived ? 'awaiting decision' : 'stuck · oldest ' + maxAge + ' d') + '</span></div>' +
+      '<div class="kviz ages" role="img" aria-label="' + (sourceDataReceived ? 'Age of pending COO approvals based on Jira Created date' : 'How long each item has been open') + '">' +
+        (sourceDataReceived ? (approvalOrder.length ? approvalOrder.slice(0, 3).map(function (p) {
+          return '<div class="age"><span class="an">' + esc(p.key) + '</span><span class="ab"><i style="width:' + Math.min(100, p.age / 28 * 100) + '%;background:' + (p.age > 14 ? 'var(--crit)' : 'var(--high)') + '"></i></span><b>' +
+            (p.createdAt ? p.age + 'd' : '—') + '</b></div>';
+        }).join('') : '<p class="muted">' + (unknownApprovalAge
+          ? 'Approval age is unavailable for ' + unknownApprovalAge + ' pending issues.'
+          : 'No pending COO approvals are synced.') + '</p>') :
         stuck.slice().sort(function (a, b) { return b.age - a.age; }).slice(0, 3).map(function (p) {
           return '<div class="age" data-tip="' + esc(p.project + ': ' + p.risk) + '"><span class="an">' + esc(p.project) + '</span><span class="ab"><i style="width:' + Math.min(100, p.age / 28 * 100) + '%;background:' + (p.age > 14 ? 'var(--crit)' : 'var(--high)') + '"></i></span><b>' + p.age + 'd</b></div>';
-        }).join('') + '</div>' +
-      (oldest ? talkIfIgnored(oldest.owner, oldest.project, esc(oldest.impact)) : '') +
-      '<div class="foot">' + delta(V.stuck[0], V.stuck[1], true) + '</div></button>';
+        }).join('')) + '</div>' +
+      (sourceDataReceived ? '' : oldest ? talkIfIgnored(oldest.owner, oldest.project, esc(oldest.impact)) : '') +
+      (sourceDataReceived ? '' : '<div class="foot">' + delta(V.stuck[0], V.stuck[1], true) + '</div>') + '</button>';
 
     var potNext = first(POTENTIAL);
     var pl = count(POTENTIAL, 'h') ? 'h' : POTENTIAL.length ? 'm' : 'n';
-    h += '<button class="card click kpi k-' + pl + '" data-open="potential"><div class="ch"><h3>Potential risks · next</h3>' + statusPill(pl) + '</div>' +
-      '<p class="def">Problems expected in the next 30 days</p>' +
-      '<div class="big"><span class="n num" style="color:var(--high-ink)">' + POTENTIAL.length + '</span><span class="what">in 30 days</span></div>' +
-      '<div class="kviz"><div class="strip" role="img" aria-label="When the potential risks are expected over the next 30 days"><span class="now"></span>' +
+    h += '<button class="card click kpi k-' + pl + '" data-open="potential"><div class="ch"><h3>' + (sourceDataReceived ? 'Upcoming deadline risks' : 'Potential risks · next') + '</h3>' + (sourceDataReceived ? '<span class="pill ' + (POTENTIAL.length ? 'h' : 'n') + '">' + (POTENTIAL.length ? 'Due soon' : 'None') + '</span>' : statusPill(pl)) + '</div>' +
+      '<p class="def">' + (sourceDataReceived ? 'Open Jira issues with a due date within 30 days, ranked by live priority/status; rule-based indicator.' : 'Problems expected in the next 30 days') + '</p>' +
+      '<div class="big"><span class="n num" style="color:var(--high-ink)">' + POTENTIAL.length + '</span><span class="what">' + (sourceDataReceived ? 'open issues due soon' : 'in 30 days') + '</span></div>' +
+      '<div class="kviz">' + (sourceDataReceived ? (POTENTIAL.length ? POTENTIAL.slice().sort(function (a, b) { return a.day - b.day; }).slice(0, 2).map(function (issue) {
+        return '<div class="age"><span class="an">' + esc(issue.key) + '</span><span>' + esc(issue.project) + '</span><b>' + esc(short(issue.day)) + '</b></div>';
+      }).join('') : '<p class="muted">No open Jira issue has a due date within the next 30 days.</p>') : '<div class="strip" role="img" aria-label="When the potential risks are expected over the next 30 days"><span class="now"></span>' +
         POTENTIAL.map(function (p) { return '<span class="pt" style="left:' + (p.day / 30 * 100) + '%;background:' + FILL[p.lvl] + '" data-tip="' + esc(p.project + ': ' + p.risk + ' · ' + fmt(p.day)) + '"></span>'; }).join('') +
-      '</div><div class="strip-lbl"><span>Today</span><span>2 wk</span><span>30 d</span></div></div>' +
-      talkIfIgnored(potNext.owner, potNext.project + ', ' + short(potNext.day), esc(potNext.impact)) +
-      '<div class="foot">' + delta(V.pot[0], V.pot[1], true) + '</div></button>';
+      '</div><div class="strip-lbl"><span>Today</span><span>2 wk</span><span>30 d</span></div></div>') +
+      (sourceDataReceived ? '' : potNext ? talkIfIgnored(potNext.owner, potNext.project + ', ' + short(potNext.day), esc(potNext.impact)) : '') +
+      (sourceDataReceived ? '' : '<div class="foot">' + delta(V.pot[0], V.pot[1], true) + '</div>') + '</button>';
     h += '</section>';
 
     // ---- row 2: impact on the organisation — what kind of problem, what it hits, who it hurts ----
@@ -342,22 +734,77 @@ export function initDashboard() {'use strict';
 
     // ---- row 3: departments, each with its lead and its oldest open item ----
     var anyFilter = S.q || !S.sev.c || !S.sev.h || !S.sev.m || !S.types.client || !S.types.internal || !S.types.cross;
-    h += '<div class="sect" id="sec-depts"><h2>Departments</h2><span class="muted">' + (anyFilter ? 'Filtered · ' : '') + 'Colour = most serious open risk · click for projects</span></div><section class="depts" aria-label="Departments">';
+    h += '<div class="sect" id="sec-depts"><h2>Departments</h2><span class="muted">' +
+      (sourceDataReceived ? 'Top six by highest live issue priority · click to inspect' : 'Colour = most serious open risk · click for projects') + '</span></div><section class="depts' + (sourceDataReceived ? ' live-depts' : '') + '" aria-label="Departments">';
     var shown = 0;
-    DEPTS.forEach(function (d) {
+    if (sourceDataReceived) {
+      var departmentSummary = DEPTS.map(function (department) {
+        var issues = RISKS.filter(function (issue) { return issue.dept === department.name && issue.open && matches(issue); });
+        return { department: department, issues: issues, highest: worst(issues) };
+      }).filter(function (item) { return item.issues.length; }).sort(function (a, b) {
+        return RANK[a.highest] - RANK[b.highest] || b.issues.length - a.issues.length || a.department.name.localeCompare(b.department.name);
+      });
+      var unassignedIssues = RISKS.filter(function (issue) { return issue.dept === 'Unassigned' && issue.open && matches(issue); });
+      if (unassignedIssues.length) departmentSummary.push({
+        department: { name: 'Unassigned' },
+        issues: unassignedIssues,
+        highest: worst(unassignedIssues),
+        unassigned: true
+      });
+      departmentSummary.sort(function (a, b) {
+        return RANK[a.highest] - RANK[b.highest] || b.issues.length - a.issues.length || a.department.name.localeCompare(b.department.name);
+      });
+      var featured = departmentSummary.slice(0, 6);
+      featured.forEach(function (item) {
+        var department = item.department, issues = item.issues, severity = item.highest;
+        if (item.unassigned) {
+          h += '<button class="dept" data-dept="Unassigned" style="--lc:' + FILL[severity] + '">' +
+            '<span class="name">Department not assigned</span><span class="head"><span class="n num">' + issues.length + '</span><span>issues</span>' +
+            '<span class="pill ' + severity + '">' + LEVEL[severity] + '</span></span>' +
+            '<span class="oldest warn">Set the Jira Department field to classify</span></button>';
+          shown++;
+          return;
+        }
+        var highestIssue = issues.slice().sort(function (a, b) { return RANK[a.lvl] - RANK[b.lvl]; })[0];
+        h += '<button class="dept" data-dept="' + esc(department.name) + '" style="--lc:' + FILL[severity] + '">' +
+          '<span class="name">' + esc(department.name) + '</span>' +
+          '<span class="head"><span class="n num" style="color:' + (severity === 'c' ? 'var(--crit-ink)' : severity === 'h' ? 'var(--high-ink)' : 'var(--fg)') + '">' + issues.length + '</span><span>' + (issues.length === 1 ? 'issue' : 'issues') + '</span>' +
+          '<span class="pill ' + severity + '">' + LEVEL[severity] + '</span></span>' +
+          '<span class="dept-top-issue">' + esc(highestIssue.key + ' · ' + highestIssue.risk) + '</span>' +
+          '<small>' + esc(highestIssue.project + ' · ' + highestIssue.status + (highestIssue.client ? ' · affects ' + highestIssue.client : '')) + '</small></button>';
+        shown++;
+      });
+      var otherDepartments = departmentSummary.slice(featured.length);
+      var emptyDepartments = DEPTS.filter(function (department) {
+        return !departmentSummary.some(function (item) { return item.department.name === department.name; });
+      });
+      h += otherDepartments.length || emptyDepartments.length
+        ? '<details class="department-more"><summary>View all ' + DEPTS.length + ' departments' +
+          (otherDepartments.length ? ' · ' + otherDepartments.length + ' more with issues' : '') + '</summary><div>' +
+          otherDepartments.concat(emptyDepartments.map(function (department) { return { department: department, issues: [], highest: 'n' }; }))
+            .map(function (item) {
+              var topIssue = item.issues.slice().sort(function (a, b) { return RANK[a.lvl] - RANK[b.lvl]; })[0];
+              return '<button class="dept-mini" data-dept="' + esc(item.department.name) + '"><b>' + esc(item.department.name) + '</b><span>' +
+                (item.issues.length ? item.issues.length + ' issue' + (item.issues.length === 1 ? '' : 's') + ' · ' + LEVEL[item.highest] + ' · ' + esc(topIssue.key + ' ' + topIssue.risk) : 'No synced issues') +
+                '</span></button>';
+            }).join('') + '</div></details>'
+        : '';
+    } else DEPTS.forEach(function (d) {
       var all = RISKS.filter(function (r) { return r.dept === d.name; });
       var list = filtered(all);
       if (S.q && !list.length && d.name.toLowerCase().indexOf(S.q.toLowerCase()) < 0 && d.lead.toLowerCase().indexOf(S.q.toLowerCase()) < 0) return;
       shown++;
       var w = worst(list);
       var headN = count(list, w);
-      var headTxt = w === 'c' ? 'critical risks' : w === 'h' ? 'high risks' : w === 'm' ? 'moderate risks' : 'risks';
+      var headTxt = sourceDataReceived ? 'issues' : w === 'c' ? 'critical risks' : w === 'h' ? 'high risks' : w === 'm' ? 'moderate risks' : 'risks';
       var rows = ['c', 'h', 'm'].filter(function (l) { return l !== w; }).map(function (l) {
         var n = count(list, l); return n ? '<div><i style="background:' + FILL[l] + '"></i>' + LEVEL[l] + '<b>' + n + '</b></div>' : '';
-      }).join('') + '<div><i style="background:' + FILL.n + '"></i>Normal<b>' + d.normal + '</b></div>';
+      }).join('') + (sourceDataReceived
+        ? '<div><i style="background:' + FILL.n + '"></i>Other / unset<b>' + count(list, 'n') + '</b></div>'
+        : '<div><i style="background:' + FILL.n + '"></i>Normal<b>' + d.normal + '</b></div>');
       var pend = PENDING.filter(function (p) { return p.dept === d.name; }).sort(function (a, b) { return b.age - a.age; })[0];
       h += '<button class="dept' + (list.length ? '' : ' dim') + '" data-dept="' + esc(d.name) + '" style="--lc:' + FILL[w] + '" title="' + esc(d.name) + '">' +
-        '<span class="name">' + esc(d.name) + '</span><span class="lead">Lead: <b>' + esc(d.lead) + '</b></span>' +
+        '<span class="name">' + esc(d.name) + '</span>' +         '<span class="lead">Lead: <b>' + esc(d.lead) + '</b></span>' +
         '<span class="head"><span class="n num" style="color:' + (w === 'c' ? 'var(--crit-ink)' : w === 'h' ? 'var(--high-ink)' : 'var(--fg)') + '">' + (list.length ? headN : 0) + '</span><span>' + headTxt + '</span></span>' +
         '<span class="mix">' + ['client', 'internal', 'cross'].map(function (t) {
           var n = list.filter(function (r) { return r.type === t; }).length;
@@ -369,20 +816,39 @@ export function initDashboard() {'use strict';
           return (holds || waits) ? '<span class="waits">' + (holds ? 'Holding up others: <b>' + holds + '</b>' : '') + (holds && waits ? ' · ' : '') + (waits ? 'Waiting on others: <b>' + waits + '</b>' : '') + '</span>' : '';
         })() +
         '<span class="rows">' + rows + '</span>' +
-        (pend ? '<span class="oldest ' + (pend.age > 14 ? 'bad' : 'warn') + '"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Oldest open: <b>' + pend.age + ' days</b></span>'
+        (sourceDataReceived ? '<span class="oldest">Issue-age history unavailable</span>' : pend ? '<span class="oldest ' + (pend.age > 14 ? 'bad' : 'warn') + '"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Oldest open: <b>' + pend.age + ' days</b></span>'
               : '<span class="oldest ok">Nothing pending too long</span>') + '</button>';
     });
     if (!shown) h += '<div class="okbox" style="grid-column:1/-1">No departments match this search.</div>';
     h += '</section>';
 
     // ---- row 3: timeline (overdue → later) ----
-    h += '<div class="sect" id="sec-timeline"><h2>Timeline · overdue to later</h2><div class="tkey"><span><i style="background:var(--crit)"></i>Critical</span><span><i style="background:var(--high)"></i>High</span><span><i style="background:var(--mod)"></i>Moderate</span><span><i style="border:1.5px dashed var(--faint)"></i>Expected</span></div></div>' +
+    h += '<div class="sect" id="sec-timeline"><h2>' + (sourceDataReceived ? 'Issue timeline' : 'Timeline · overdue to later') + '</h2>' + (sourceDataReceived ? '' : '<div class="tkey"><span><i style="background:var(--crit)"></i>Critical</span><span><i style="background:var(--high)"></i>High</span><span><i style="background:var(--mod)"></i>Moderate</span><span><i style="border:1.5px dashed var(--faint)"></i>Expected</span></div>') + '</div>' +
       '<section class="card tline" aria-label="Timeline">' + timeline() + '</section>';
     h += '</div>';
 
     // ---- right rail ----
     h += '<aside class="rail" aria-label="Summary and actions">';
     h += '<section class="card ai"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span class="spark">✦</span>AI summary &amp; insights</h3></div><ul class="brief">' +
+      (sourceDataReceived
+        ? (function () {
+          var snapshot = liveSourceData && liveSourceData.snapshot;
+          var issues = snapshot ? snapshot.jiraIssues : [];
+          var repositories = snapshot ? snapshot.bitbucketRepositories || [] : [];
+          var commitCount = repositories.reduce(function (count, repository) {
+            return count + (repository.recentCommits || []).length;
+          }, 0);
+          var isOpen = function (issue) { return !/^(done|closed|resolved|complete|completed)$/i.test((issue.status || '').trim()); };
+          var openIssues = issues.filter(isOpen);
+          var blocked = openIssues.filter(function (issue) { return (issue.status || '').toLowerCase().indexOf('block') >= 0; }).length;
+          var highPriority = openIssues.filter(function (issue) { return /^(blocker|critical|highest|high|urgent)$/i.test((issue.priority || '').trim()); }).length;
+          return '<li><span class="tag t-c">Jira</span><span><b>' + issues.length + ' issues</b> synced; ' + openIssues.length + ' are not marked done or resolved.</span></li>' +
+            '<li><span class="tag t-h">Attention</span><span><b>' + highPriority + ' high-priority</b> and ' + blocked + ' blocked open Jira issues, based on current priority and status.</span></li>' +
+            '<li><span class="tag t-m">Confluence</span><span><b>' + (snapshot ? snapshot.confluencePages.length : 0) + ' pages</b> indexed by title and space; page content is unavailable.</span></li>' +
+            '<li><span class="tag t-n">Bitbucket</span><span><b>' + repositories.length + ' repositories</b> synced with ' + commitCount + ' recent commits; pull requests and pipelines are unavailable.</span></li>' +
+            '<li><span class="tag t-n">Scope</span><span>Snapshot-based summary only; forecasts and financial data are unavailable. Jira deadlines and configured owners are shown where present.</span></li>';
+        })()
+        :
       '<li><span class="tag t-c">Now</span><span><b>' + critOpen.length + ' critical</b>, ≈ ₹' + stake + ' L at stake; Payments release is the largest.</span></li>' +
       '<li><span class="tag t-h">Stuck</span><span><b>ML hire</b> waiting ' + maxAge + ' days; ML lead leaves 30 Oct.</span></li>' +
       '<li><span class="tag t-m">Next</span><span><b>Festive traffic</b> on 21 Oct; GPU quota ends in 15 days.</span></li>' +
@@ -398,17 +864,50 @@ export function initDashboard() {'use strict';
         return (topC ? '<li><span class="tag t-n">Client</span><span><b>' + esc(topC) + '</b> is most exposed: ' + byClient[topC].n + ' problems, ≈ ₹' + byClient[topC].stake + ' L.</span></li>' : '') +
           (topF ? '<li><span class="tag t-n">Teams</span><span><b>' + esc(deptShort(topF)) + '</b> is holding up other teams in ' + byFrom[topF] + ' of ' + nCross + ' handoff problems.</span></li>' : '');
       })() +
-      '<li><span class="tag t-n">Cause</span><span>Fraud model drift began when the new payment partner went live.</span></li></ul></section>';
+      '<li><span class="tag t-n">Cause</span><span>Fraud model drift began when the new payment partner went live.</span></li>') + '</ul></section>';
 
-    h += '<section class="card"><div class="ch"><h3>Recommended executive plan</h3></div><p class="def" style="margin-top:-4px">Three moves that remove the most risk</p><div>' +
-      PLAN.map(function (a, i) {
+    h += '<section class="card"><div class="ch"><h3>Recent Bitbucket commits</h3><span class="pill ' + (bitbucketCommits.length ? 'n' : 'm') + '">' + bitbucketCommits.length + '</span></div>';
+    h += bitbucketCommits.length ? bitbucketCommits.slice(0, 10).map(function (item) {
+      var commit = item.commit;
+      var message = (commit.message || '').split('\n')[0] || 'Commit message unavailable';
+      return '<p class="forge-source commit-source">' + (commit.url
+        ? '<a href="' + esc(commit.url) + '" target="_blank" rel="noreferrer">' + esc(message) + '</a>'
+        : '<span>' + esc(message) + '</span>') +
+        '<small>' + esc(item.repository + ' · ' + commit.author + (commit.date ? ' · ' + new Date(commit.date).toLocaleString() : '')) + '</small></p>';
+    }).join('') : '<p class="muted">' + (bitbucketRepositories.length
+      ? 'No commits were returned. Check repository read permission or confirm these repositories contain commits.'
+      : 'No Bitbucket repositories are available to read commit activity from.') + '</p>';
+    h += '</section>';
+
+    h += '<section class="card"><div class="ch"><h3>Recommended executive plan</h3></div><p class="def" style="margin-top:-4px">' +
+      (sourceDataReceived ? 'Imported mitigation text and owners are available in each Jira issue; executive recommendations are not generated from those fields.' : 'Three moves that remove the most risk') + '</p><div>' +
+      (sourceDataReceived ? '<p class="muted">Open a Jira issue in the timeline or issue list to review its imported owner and mitigation.</p>' : PLAN.map(function (a, i) {
         return '<div class="aitem"><span class="no">' + (i + 1) + '</span><div><div class="t">' + esc(a.text) + '</div><small>' + esc(a.why) + ' · with <b>' + esc(a.owner) + '</b></small></div></div>';
-      }).join('') + '</div>' +
-      (S.sent ? '<button class="btn done" disabled>✓ Sent to ' + PLAN.length + ' owners</button>' : '<button class="btn" data-act="send">Assign to owners <span aria-hidden="true">→</span></button>') + '</section>';
+      }).join('')) + '</div>' +
+      (sourceDataReceived ? '' : S.sent ? '<button class="btn done" disabled>✓ Sent to ' + PLAN.length + ' owners</button>' : '<button class="btn" data-act="send">Assign to owners <span aria-hidden="true">→</span></button>') + '</section>';
 
+    var liveApprovals = RISKS.filter(function (issue) {
+      return issue.cooDecision || issue.cooApprover || issue.approvalDate;
+    }).sort(function (a, b) { return b.age - a.age; });
+    var pendingApprovals = liveApprovals.filter(function (issue) {
+      return !/^(approved|rejected|declined)$/i.test((issue.cooDecision || '').trim());
+    }).length;
     var pending = DECISIONS.filter(function (d) { return !S.dec[d.id]; }).length;
-    h += '<section class="card"><div class="ch"><h3>Decisions awaiting approval</h3><span class="pill ' + (pending ? 'h' : 'n') + '">' + pending + ' pending</span></div>' +
-      DECISIONS.map(function (d) {
+    h += '<section class="card"><div class="ch"><h3>' + (sourceDataReceived ? 'COO approvals' : 'Decisions awaiting approval') + '</h3>' +
+      (sourceDataReceived
+        ? '<span class="pill ' + (liveApprovals.length && pendingApprovals ? 'h' : 'n') + '">' + (liveApprovals.length ? pendingApprovals + ' pending' : 'No records') + '</span>'
+        : '<span class="pill ' + (pending ? 'h' : 'n') + '">' + pending + ' pending</span>') + '</div>' +
+      (sourceDataReceived
+        ? (liveApprovals.length ? liveApprovals.map(function (issue) {
+          var decision = issue.cooDecision || 'Pending decision';
+          return '<div class="dec"><div class="t">' + esc(issue.key + ' · ' + issue.risk) +
+            ' <span class="wait">' + esc(decision) + '</span></div>' +
+            '<div class="muted">' + esc([issue.project, issue.cooApprover ? 'COO approver: ' + issue.cooApprover : 'Approver not set',
+              issue.pendingApproval ? issue.createdAt ? 'Waiting ' + issue.age + ' days' : 'Waiting age unavailable' : ''].filter(Boolean).join(' · ')) + '</div>' +
+            (issue.approvalDate ? '<div class="iflate">Approval date: ' + esc(issue.approvalDate) + '</div>' : '') +
+            '</div>';
+        }).join('') : '<p class="muted">No synced Jira issues include COO decision or approver details. Confirm those CSV fields were mapped to the matching Jira custom fields, then run a new source sync.</p>')
+        : DECISIONS.map(function (d) {
         var st = S.dec[d.id];
         return '<div class="dec"><div class="t">' + esc(d.text) + ' <span class="wait ' + (d.waiting > STUCK_DAYS ? 'bad' : '') + '">waiting ' + d.waiting + ' d</span></div>' +
           '<div class="muted">' + esc(d.meta) + '</div>' +
@@ -417,13 +916,16 @@ export function initDashboard() {'use strict';
           (st ? '<span style="display:flex;gap:8px;align-items:center"><span class="pill ' + (st === 'yes' ? 'n' : 'c') + '">' + (st === 'yes' ? 'Approved' : 'Declined') + '</span><button class="btn2" data-undo="' + d.id + '">Undo</button></span>'
             : '<span style="display:flex;gap:8px"><button class="btn2" data-decide="' + d.id + '" data-v="no">Decline</button><button class="btn sm" data-decide="' + d.id + '" data-v="yes">Approve</button></span>') +
           '</div></div>';
-      }).join('') + '</section>';
-    h += cooRiskCard();   // COO risk intelligence hook
+      }).join('')) + '</section>';
+    if (sourceDataReceived) {
+      h += '<section class="card coo" aria-label="COO risk areas"><div class="ch"><h3>COO risk areas</h3><span class="pill m">Limited data</span></div>' +
+        '<p class="muted">Jira due dates, customer impact, mitigation, and approval fields are shown on their issues. A broader risk score still requires financial and historical data.</p></section>';
+    } else h += cooRiskCard();
     h += '</aside>';
 
     app.innerHTML = h;
     alignNames();
-    if (innerWidth >= 1800 && typeof fit === 'function') requestAnimationFrame(fit);
+    if (innerWidth >= 1200 && typeof fit === 'function') requestAnimationFrame(fit);
   }
 
   // =====================================================================
@@ -433,6 +935,36 @@ export function initDashboard() {'use strict';
   //   3. Between departments: which team is holding up which, and why
   // =====================================================================
   function impactSection() {
+    if (sourceDataReceived) {
+      var issuesWithImpact = RISKS.filter(function (issue) { return issue.open && issue.customerImpact; }).sort(bySev);
+      var clientIssues = {};
+      RISKS.forEach(function (issue) {
+        if (issue.open && issue.client) (clientIssues[issue.client] = clientIssues[issue.client] || []).push(issue);
+      });
+      var clients = Object.keys(clientIssues).sort(function (a, b) {
+        return RANK[worst(clientIssues[a])] - RANK[worst(clientIssues[b])] || clientIssues[b].length - clientIssues[a].length;
+      });
+      var crossIssues = RISKS.filter(function (issue) {
+        return issue.open && issue.from && issue.to && issue.from !== issue.to;
+      }).sort(bySev);
+      return '<div class="sect" id="sec-impact"><h2>Impact on the organisation</h2></div>' +
+        '<section class="imp" aria-label="Impact on the organisation">' +
+        '<div class="card mx"><div class="ch"><h3>Customer impact</h3><span class="pill ' + (issuesWithImpact.length ? 'h' : 'n') + '">' + issuesWithImpact.length + ' issues</span></div>' +
+        (issuesWithImpact.length ? issuesWithImpact.slice(0, 3).map(function (issue) {
+          return '<button class="live-impact-row" data-ev="' + esc(issue.id) + '"><b>' + esc(issue.key + ' · ' + issue.risk) + '</b><small>' + esc(issue.customerImpact) + '</small></button>';
+        }).join('') : '<p class="muted">Customer impact values will appear here when entered in Jira.</p>') + '</div>' +
+        '<div class="card"><div class="ch"><h3>Clients affected</h3><span class="pill ' + (clients.length ? 'h' : 'n') + '">' + clients.length + '</span></div>' +
+        (clients.length ? clients.slice(0, 4).map(function (client) {
+          var records = clientIssues[client].slice().sort(bySev), topIssue = records[0];
+          return '<button class="cli" data-client="' + esc(client) + '"><span class="dot" style="background:' + FILL[worst(records)] + '"></span><span class="nm">' + esc(client) +
+            '</span><span class="amt">' + records.length + '</span><small>' + esc(topIssue.key + ' · ' + topIssue.risk + ' · ' + topIssue.dept) + '</small></button>';
+        }).join('') : '<p class="muted">No client names are set on the synced Jira issues.</p>') + '</div>' +
+        '<div class="card"><div class="ch"><h3>Between departments</h3><span class="pill ' + (crossIssues.length ? 'h' : 'n') + '">' + crossIssues.length + '</span></div>' +
+        (crossIssues.length ? crossIssues.slice(0, 3).map(function (issue) {
+          return '<button class="live-impact-row" data-ev="' + esc(issue.id) + '"><b>' + esc(issue.from + ' → ' + issue.to) + '</b><small>' + esc(issue.key + ' · ' + issue.risk) + '</small></button>';
+        }).join('') : '<p class="muted">To show cross-department impact, set both Department and Impacted department on the Jira issue.</p>') + '</div>' +
+        '</section>';
+    }
     var P = problems(), types = ['client', 'internal', 'cross'];
     var all = RISKS.concat(POTENTIAL);
     var h = '<div class="sect" id="sec-impact"><h2>Impact on the organisation</h2><span class="typekey">' +
@@ -539,22 +1071,47 @@ export function initDashboard() {'use strict';
     { when: 'Later', from: 91, to: 9999 }
   ];
   function timeline() {
-    var items = filtered(RISKS).map(function (r) { return { r: r, pot: false }; })
-      .concat(filtered(POTENTIAL).map(function (r) { return { r: r, pot: true }; }))
-      .concat(filtered(stuckItems()).map(function (r) { r.day = -r.age; return { r: r, stuck: true }; }));
+    var items;
+    if (sourceDataReceived) {
+      items = filtered(RISKS).reduce(function (dueItems, r) {
+        if (!r.open || !r.dueDate) return dueItems;
+        var dueDate = new Date(String(r.dueDate).slice(0, 10) + 'T00:00:00');
+        if (Number.isNaN(dueDate.getTime())) return dueItems;
+        var today = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+        var day = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
+        dueItems.push({ r: r, day: day, dueDate: dueDate });
+        return dueItems;
+      }, []);
+      if (!items.length) return '<div class="weeks"><div class="none">No synced Jira issues have a due date. Confirm the Due Date column was mapped in Jira and run a new source sync.</div></div>';
+    } else {
+      items = filtered(RISKS).map(function (r) { return { r: r, day: r.day, pot: false }; })
+        .concat(filtered(POTENTIAL).map(function (r) { return { r: r, day: r.day, pot: true }; }))
+        .concat(filtered(stuckItems()).map(function (r) { r.day = -r.age; return { r: r, day: r.day, stuck: true }; }));
+    }
     var h = '<div class="weeks">';
     WEEKS.forEach(function (w, i) {
-      var list = items.filter(function (x) { return x.r.day >= w.from && x.r.day <= w.to; }).sort(function (a, b) { return bySev(a.r, b.r); });
+      var list = items.filter(function (x) { return x.day >= w.from && x.day <= w.to; }).sort(function (a, b) {
+        return RANK[a.r.lvl] - RANK[b.r.lvl] || a.day - b.day;
+      });
       var crit = list.filter(function (x) { return x.r.lvl === 'c'; }).length;
-      if (w.overdue) list.sort(function (a, b) { return a.r.day - b.r.day; });
+      if (w.overdue) list.sort(function (a, b) { return a.day - b.day; });
       h += '<div class="wk' + (i === 1 ? ' now' : '') + (w.overdue ? ' late' : '') + '"><div class="rail"><i></i></div>' +
-        '<div class="head"><div class="when">' + w.when + '</div><div class="range">' + (w.overdue ? 'open over ' + STUCK_DAYS + ' days' : w.to > 900 ? 'after ' + short(90) : short(w.from) + ' – ' + short(w.to)) + '</div></div>' +
+        '<div class="head"><div class="when">' + (sourceDataReceived && w.overdue ? 'Overdue' : w.when) + '</div><div class="range">' + (sourceDataReceived
+          ? w.overdue ? 'past due date' : w.to > 900 ? 'after ' + short(90) : short(w.from) + ' – ' + short(w.to)
+          : w.overdue ? 'open over ' + STUCK_DAYS + ' days' : w.to > 900 ? 'after ' + short(90) : short(w.from) + ' – ' + short(w.to)) + '</div></div>' +
         '<div class="cnt">' + (list.length ? list.length + (list.length === 1 ? ' item' : ' items') + (crit ? ' · ' + crit + ' critical' : '') : '') + '</div><div class="items">';
       if (!list.length) h += '<div class="none">Nothing</div>';
       var shown = S.wkOpen[i] ? list : list.slice(0, 3);
       shown.forEach(function (x) {
-        h += '<button class="tk' + (x.pot ? ' pot' : '') + '" data-ev="' + x.r.id + '" style="--kc:' + FILL[x.r.lvl] + '" data-tip="' + esc(LEVEL[x.r.lvl] + (x.pot ? ' · expected' : '') + ': ' + x.r.risk) + '">' +
-          '<b>' + esc(x.r.project) + '</b><small>' + (x.stuck ? '<span class="late-d">' + x.r.age + ' days open</span> · ' + esc(x.r.owner) : fmt(x.r.day) + (x.pot ? ' · <span class="exp">Expected</span>' : '')) + '</small><span class="tt">' + typeTag(x.r) + '</span></button>';
+        var liveDate = sourceDataReceived && x.dueDate ? x.dueDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+        var dateLabel = sourceDataReceived
+          ? (x.day < 0 ? '<span class="late-d">' + Math.abs(x.day) + ' days overdue</span>' : 'Due ' + esc(liveDate))
+          : x.stuck ? '<span class="late-d">' + x.r.age + ' days open</span> · ' + esc(x.r.owner) : fmt(x.day) + (x.pot ? ' · <span class="exp">Expected</span>' : '');
+        h += '<button class="tk' + (x.pot ? ' pot' : '') + '" data-ev="' + esc(x.r.id) + '" style="--kc:' + FILL[x.r.lvl] + '" data-tip="' + esc(LEVEL[x.r.lvl] + (x.pot ? ' · expected' : '') + ': ' + x.r.risk) + '">' +
+          '<b>' + esc(sourceDataReceived ? x.r.key + ' · ' + x.r.project : x.r.project) + '</b><small>' + dateLabel + '</small>' +
+          (sourceDataReceived
+            ? '<span class="tt">' + esc(x.r.risk) + (x.r.client ? ' · ' + esc(x.r.client) : '') + '</span>'
+            : '<span class="tt">' + typeTag(x.r) + '</span>') + '</button>';
       });
       if (list.length > 3) h += '<button class="more" data-wk="' + i + '">' + (S.wkOpen[i] ? 'Show less' : '+' + (list.length - 3) + ' more') + '</button>';
       h += '</div></div>';
@@ -571,17 +1128,36 @@ export function initDashboard() {'use strict';
       if (S.pop !== k) { el.hidden = true; el.innerHTML = ''; return; }
       el.hidden = false;
       var h = '';
-      if (k === 'filter') {
+      if (k === 'filter' && sourceDataReceived) {
+        h = '<h4>Jira priority</h4>' + ['c', 'h', 'm', 'n'].map(function (l) {
+          return '<button class="opt" data-sev="' + l + '"><span class="pill ' + l + '">' + levelLabel(l) + '</span><span>' + (S.sev[l] ? '✓' : '') + '</span></button>';
+        }).join('') + '<button class="opt" data-sev="all" style="color:var(--accent);font-weight:600">Reset</button>';
+      } else if (k === 'filter') {
         h = '<h4>Risk level</h4>' + ['c', 'h', 'm'].map(function (l) {
           return '<button class="opt" data-sev="' + l + '"><span class="pill ' + l + '">' + LEVEL[l] + '</span><span>' + (S.sev[l] ? '✓' : '') + '</span></button>';
         }).join('') + '<div class="grp"><h4>Problem type</h4>' + ['client', 'internal', 'cross'].map(function (t) {
           return '<button class="opt" data-ftype="' + t + '">' + tyChip(t, TYPE[t]) + '<span>' + (S.types[t] ? '✓' : '') + '</span></button>';
         }).join('') + '</div><button class="opt" data-sev="all" style="color:var(--accent);font-weight:600">Reset</button>';
       } else if (k === 'notif') {
-        h = '<h4>Notifications</h4>' + NOTIFS.map(function (n) {
+        h = sourceDataReceived
+          ? '<h4>Source sync status</h4>' + (liveSourceData && liveSourceData.state
+            ? ['jira', 'confluence', 'bitbucket'].map(function (key) {
+              var item = liveSourceData.state[key];
+              return '<div class="notif"><span class="d" style="background:' + (item.state === 'connected' ? 'var(--ok)' : item.state === 'error' ? 'var(--crit)' : 'var(--mod)') + '"></span><div><b>' + esc(key.charAt(0).toUpperCase() + key.slice(1)) + '</b> · ' + esc(item.state === 'connected' ? item.count + ' records connected' : item.message) + (item.syncedAt ? '<small>Last successful sync: ' + esc(new Date(item.syncedAt).toLocaleString()) + '</small>' : '') + '</div></div>';
+            }).join('')
+            : '<p class="muted">Source status is not available yet.</p>')
+          : '<h4>Notifications</h4>' + NOTIFS.map(function (n) {
           return '<div class="notif"><span class="d" style="background:' + (n.lvl === 'p' ? 'var(--accent)' : FILL[n.lvl]) + '"></span><div>' + esc(n.text) + '<small>' + n.when + '</small></div></div>';
         }).join('');
       } else if (k === 'cal') {
+        if (sourceDataReceived) {
+          h = '<h4>Jira due dates</h4>' + (RISKS.filter(function (issue) { return issue.open && issue.dueDate; }).sort(function (a, b) {
+            return String(a.dueDate).localeCompare(String(b.dueDate));
+          }).map(function (issue) {
+            return '<div class="notif"><span class="d" style="background:' + FILL[issue.lvl] + '"></span><div><b>' + esc(issue.key + ' · ' + issue.risk) + '</b><small>' +
+              esc(new Date(String(issue.dueDate).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + '</small></div></div>';
+          }).join('') || '<p class="muted">No synced Jira issues have a due date. Confirm the Due Date column was mapped and run a new source sync.</p>');
+        } else {
         var y = TODAY.getFullYear(), mo = TODAY.getMonth();
         var lead = (new Date(y, mo, 1).getDay() + 6) % 7, days = new Date(y, mo + 1, 0).getDate(), due = {};
         RISKS.concat(POTENTIAL).forEach(function (r) {
@@ -594,12 +1170,15 @@ export function initDashboard() {'use strict';
           h += '<span class="' + (d === TODAY.getDate() ? 'today ' : '') + (due[d] ? 'has' : '') + '"' + (due[d] ? ' style="--dc:' + FILL[due[d]] + '" data-tip="Due: ' + LEVEL[due[d]] + '"' : '') + '>' + d + '</span>';
         }
         h += '</div>';
+        }
       } else if (k === 'view') {
-        h = '<h4>Compare against</h4>' + Object.keys(VIEWS).map(function (v) {
+        h = sourceDataReceived
+          ? '<h4>Snapshot range</h4><p class="muted">Only the latest synced snapshot is available. Historical comparisons require stored issue history.</p>'
+          : '<h4>Compare against</h4>' + Object.keys(VIEWS).map(function (v) {
           return '<button class="opt' + (S.view === v ? ' on' : '') + '" data-view="' + v + '">Last ' + VIEWS[v].label + '<span>' + (S.view === v ? '✓' : '') + '</span></button>';
         }).join('');
       } else if (k === 'profile') {
-        h = '<div class="profile-summary"><span class="avatar">V</span><div><b>Vishva</b><small>Dashboard user</small></div></div>' +
+        h = '<div class="profile-summary"><span class="avatar">P</span><div><b>Profile</b><small>Connected app user</small></div></div>' +
           '<button class="opt" data-page="help"><span>Help center</span><span aria-hidden="true">?</span></button>' +
           '<button class="opt" data-page="settings"><span>Settings</span><span aria-hidden="true">⚙</span></button>';
       }
@@ -607,10 +1186,10 @@ export function initDashboard() {'use strict';
     });
     var profileButton = document.querySelector('[data-pop="profile"]');
     if (profileButton) profileButton.setAttribute('aria-expanded', S.pop === 'profile');
-    var off = ['c', 'h', 'm'].filter(function (l) { return !S.sev[l]; }).length +
-      ['client', 'internal', 'cross'].filter(function (t) { return !S.types[t]; }).length;
+    var off = (sourceDataReceived ? ['c', 'h', 'm', 'n'] : ['c', 'h', 'm']).filter(function (l) { return !S.sev[l]; }).length +
+      (sourceDataReceived ? 0 : ['client', 'internal', 'cross'].filter(function (t) { return !S.types[t]; }).length);
     var fb = document.getElementById('fbadge'); fb.hidden = !off; fb.textContent = off ? off + ' off' : '';
-    document.getElementById('viewlbl').textContent = VIEWS[S.view].label;
+    document.getElementById('viewlbl').textContent = sourceDataReceived ? 'Latest' : VIEWS[S.view].label;
   }
 
   // =====================================================================
@@ -618,6 +1197,28 @@ export function initDashboard() {'use strict';
   // =====================================================================
   function riskBlock(r, pot, showDept) {
     var open = S.open === r.id;
+    if (sourceDataReceived) {
+      var liveDetails = [
+        ['Due date', r.dueDate],
+        ['Waiting for approval', r.pendingApproval ? (r.createdAt ? r.age + ' days' : 'Age unavailable') : ''],
+        ['Department', r.dept === 'Unassigned' ? '' : r.dept],
+        ['Impacted department', r.impactedDepartment],
+        ['Client', r.client],
+        ['Customer impact', r.customerImpact],
+        ['Mitigation', r.mitigation],
+        ['Owner', r.owner],
+        ['COO decision', r.cooDecision],
+        ['COO approver', r.cooApprover],
+        ['Approval date', r.approvalDate]
+      ].filter(function (item) { return item[1]; });
+      return '<div class="proj"><button data-toggle="' + esc(r.id) + '" aria-expanded="' + open + '"><span>' + esc(r.key || r.project) +
+        (showDept ? '<small class="muted" style="display:block;font-weight:400">' + esc(r.dept) + '</small>' : '') + '</span>' +
+        '<span style="display:flex;gap:6px;align-items:center"><span class="pill">' + esc(r.status || 'Status not set') + '</span><span class="pill' + (r.priority ? ' ' + r.lvl : '') + '">' + esc(r.priority || 'Priority not set') + '</span></span></button>' +
+        (open ? '<dl><dt>Summary</dt><dd><b>' + esc(r.risk) + '</b></dd><dt>Status</dt><dd>' + esc(r.status || 'Not set') +
+          '</dd><dt>Priority</dt><dd>' + esc(r.priority || 'Not set') + '</dd>' + liveDetails.map(function (item) {
+            return '<dt>' + esc(item[0]) + '</dt><dd>' + esc(item[1]) + '</dd>';
+          }).join('') + '</dl>' : '') + '</div>';
+    }
     return '<div class="proj"><button data-toggle="' + r.id + '" aria-expanded="' + open + '"><span>' + esc(r.project) +
       (showDept ? '<small class="muted" style="display:block;font-weight:400">' + esc(r.dept) + '</small>' : '') +
       (r.type ? '<span style="display:block;margin-top:4px;font-weight:400">' + typeTag(r) + '</span>' : '') + '</span>' +
@@ -633,17 +1234,22 @@ export function initDashboard() {'use strict';
     var title, sub, list, pot = false, showDept = true;
     if (D.type === 'dept') {
       list = RISKS.filter(function (r) { return r.dept === D.dept; }).sort(bySev); showDept = false;
-      title = D.dept; sub = list.length + ' projects at risk · most serious first';
+      title = D.dept; sub = sourceDataReceived ? list.length + ' Jira issues · sorted by priority' : list.length + ' projects at risk · most serious first';
     } else if (D.type === 'critical') {
       list = RISKS.filter(function (r) { return r.lvl === 'c'; }).sort(function (a, b) { return (b.open ? 1 : 0) - (a.open ? 1 : 0) || a.day - b.day; });
-      title = 'Critical risks'; sub = criticalOpen().length + ' need action · ' + list.length + ' in total';
+      title = sourceDataReceived ? 'Critical-priority Jira issues' : 'Critical risks'; sub = sourceDataReceived ? criticalOpen().length + ' open · ' + list.length + ' in total' : criticalOpen().length + ' need action · ' + list.length + ' in total';
     } else if (D.type === 'offtrack') {
       var names = offTrackProjects();
       list = names.map(function (n) { return RISKS.filter(function (r) { return r.project === n && (r.lvl === 'c' || r.blocked); }).sort(bySev)[0]; });
       title = 'Projects off track'; sub = names.length + ' of ' + TOTAL_PROJECTS + ' projects';
     } else if (D.type === 'stuck') {
-      list = stuckItems().sort(function (a, b) { return b.age - a.age; });
-      title = 'Pending too long'; sub = list.length + ' open over ' + STUCK_DAYS + ' days · oldest first';
+      list = sourceDataReceived
+        ? PENDING.slice().sort(function (a, b) { return b.age - a.age; })
+        : stuckItems().sort(function (a, b) { return b.age - a.age; });
+      title = sourceDataReceived ? 'Pending COO approvals' : 'Pending too long';
+      sub = sourceDataReceived
+        ? list.length + ' awaiting a decision · oldest first'
+        : list.length + ' open over ' + STUCK_DAYS + ' days · oldest first';
     } else if (D.type === 'cell') {
       list = RISKS.concat(POTENTIAL).filter(function (r) { return r.area === D.area && r.type === D.t && matches(r); }).sort(bySev);
       title = D.area; sub = TYPE[D.t] + ' · ' + list.length + ' problems · most serious first';
@@ -656,19 +1262,23 @@ export function initDashboard() {'use strict';
       var cDepts = Object.keys(list.reduce(function (m, r) { m[deptShort(r.dept)] = 1; if (r.to) m[deptShort(r.to)] = 1; return m; }, {}));
       title = D.client; sub = 'Client · ' + list.length + ' problems' + (cStake ? ' · ≈ ₹' + cStake + ' L at stake' : '') + ' · teams involved: ' + cDepts.join(', ');
     } else {
-      list = POTENTIAL.slice().sort(function (a, b) { return a.day - b.day; }); pot = true;
-      title = 'Potential risks'; sub = list.length + ' expected in the next 30 days · soonest first';
+      list = sourceDataReceived ? [] : POTENTIAL.slice().sort(function (a, b) { return a.day - b.day; }); pot = true;
+      title = 'Potential risks'; sub = sourceDataReceived ? 'Forecast data is not available in the latest sync.' : list.length + ' expected in the next 30 days · soonest first';
     }
     var h = '<div class="scrim"><button class="away" data-close aria-label="Close"></button><aside class="drawer" role="dialog" aria-label="' + esc(title) + '">' +
       '<div class="top2"><div><h2>' + esc(title) + '</h2><span class="muted">' + sub + '</span></div><button class="iconbtn" data-close aria-label="Close" style="border:1px solid var(--line)">✕</button></div>';
-    if (!list.length) h += '<div class="okbox">Nothing open here.</div>';
+    if (!list.length) h += '<div class="okbox">' + (sourceDataReceived && D.type === 'stuck'
+      ? 'No pending COO approvals are synced.'
+      : sourceDataReceived && D.type === 'potential'
+        ? 'Forecast and due-date data are not available in the latest sync.'
+        : 'Nothing open here.') + '</div>';
     list.forEach(function (r) { h += riskBlock(r, pot || r.id.charAt(0) === 'p', showDept); });
     if (D.type === 'dept') {
       var pend = PENDING.filter(function (p) { return p.dept === D.dept; }).sort(function (a, b) { return b.age - a.age; });
       if (pend.length) { h += '<h3 style="font-size:14px;margin-top:6px">Pending too long</h3>'; pend.forEach(function (r) { h += riskBlock(r, false, false); }); }
       var heldBy = RISKS.concat(POTENTIAL).filter(function (r) { return r.type === 'cross' && r.to === D.dept && r.dept !== D.dept; }).sort(bySev);
       if (heldBy.length) { h += '<h3 style="font-size:14px;margin-top:6px">Held up by other departments</h3>'; heldBy.forEach(function (r) { h += riskBlock(r, r.id.charAt(0) === 'p', true); }); }
-      h = h.replace('<span class="muted">', '<span class="muted">Lead: ' + esc(leadOf(D.dept).lead) + ' · ');
+      if (!sourceDataReceived) h = h.replace('<span class="muted">', '<span class="muted">Lead: ' + esc(leadOf(D.dept).lead) + ' · ');
     }
     layer.innerHTML = h + '</aside></div>';
   }
@@ -704,6 +1314,92 @@ export function initDashboard() {'use strict';
       return 'Draft:\n"Overall health is ' + healthScore() + '/100 and 7 of 25 projects are off track. Four critical risks need action and each has a named owner; the largest is the Payments 3.2 release. We expect six further risks in the next 30 days and are preparing mitigations."';
     }]
   ];
+  function liveAnswer(text) {
+    var snapshot = liveSourceData && liveSourceData.snapshot;
+    if (!snapshot) return 'There is no synced snapshot available yet. Check source access and use Sync sources now.';
+    var issues = snapshot.jiraIssues || [];
+    var pages = snapshot.confluencePages || [];
+    var repositories = snapshot.bitbucketRepositories || [];
+    var commits = repositories.reduce(function (all, repository) {
+      return all.concat((repository.recentCommits || []).map(function (commit) {
+        return { repository: repository.fullName, commit: commit };
+      }));
+    }, []).sort(function (a, b) { return new Date(b.commit.date).getTime() - new Date(a.commit.date).getTime(); });
+    var q = (text || '').toLowerCase();
+    var isOpen = function (issue) { return !/^(done|closed|resolved|complete|completed)$/i.test((issue.status || '').trim()); };
+    var matches = issues.filter(function (issue) {
+      return [
+        issue.key, issue.summary, issue.project, issue.status, issue.priority, issue.department,
+        issue.impactedDepartment, issue.client, issue.customerImpact, issue.owner, issue.mitigation,
+        issue.cooDecision, issue.cooApprover, issue.approvalDate, issue.dueDate
+      ].join(' ').toLowerCase().indexOf(q) >= 0;
+    });
+    if (/summary|overview|source|all data|counts/.test(q)) {
+      return 'Latest synced records: ' + issues.length + ' Jira issues (' + issues.filter(isOpen).length + ' not marked done/closed/resolved), ' +
+        pages.length + ' Confluence pages, ' + repositories.length + ' Bitbucket repositories, and ' + commits.length + ' recent Bitbucket commits. This is a current snapshot, not a forecast.';
+    }
+    if (/block/.test(q)) {
+      var blocked = issues.filter(function (issue) { return isOpen(issue) && (issue.status || '').toLowerCase().indexOf('block') >= 0; });
+      return blocked.length ? blocked.map(function (issue) { return '• ' + issue.key + ' · ' + issue.summary + ' (' + issue.status + ')'; }).join('\n')
+        : 'No open Jira issues with a status containing “block” were found in the latest snapshot.';
+    }
+    if (/due|deadline|upcoming/.test(q)) {
+      var dueSoon = issues.filter(function (issue) { return isOpen(issue) && issue.dueDate; })
+        .sort(function (a, b) { return String(a.dueDate).localeCompare(String(b.dueDate)); });
+      return dueSoon.length ? dueSoon.map(function (issue) {
+        return '• ' + issue.key + ' · due ' + issue.dueDate + ' · ' + issue.summary +
+          (issue.department ? ' · ' + issue.department : '');
+      }).join('\n') : 'No open Jira issues with a due date are present in the latest snapshot.';
+    }
+    if (/approv|coo decision/.test(q)) {
+      var approvals = issues.filter(function (issue) {
+        return issue.cooDecision || issue.cooApprover || issue.approvalDate;
+      });
+      return approvals.length ? approvals.map(function (issue) {
+        return '• ' + issue.key + ' · ' + (issue.cooDecision || 'Pending decision') +
+          (issue.cooApprover ? ' · approver ' + issue.cooApprover : '') +
+          (issue.approvalDate ? ' · approval date ' + issue.approvalDate : '');
+      }).join('\n') : 'No COO approval fields are present in the latest snapshot.';
+    }
+    if (/client|customer/.test(q)) {
+      var clients = issues.filter(function (issue) { return issue.client || issue.customerImpact; });
+      return clients.length ? clients.map(function (issue) {
+        return '• ' + issue.key + (issue.client ? ' · client ' + issue.client : '') +
+          (issue.customerImpact ? ' · impact ' + issue.customerImpact : '');
+      }).join('\n') : 'No client or customer-impact values are present in the latest snapshot.';
+    }
+    if (/urgent|critical|high priority|attention/.test(q)) {
+      var high = issues.filter(function (issue) { return isOpen(issue) && /^(blocker|critical|highest|high)$/i.test(issue.priority || ''); });
+      return high.length ? high.map(function (issue) { return '• ' + issue.key + ' · ' + issue.summary + ' (' + issue.priority + ', ' + issue.status + ')'; }).join('\n')
+        : 'No open Jira issues marked High, Highest, Critical, or Blocker were found.';
+    }
+    if (matches.length) return matches.map(function (issue) {
+      return '• ' + issue.key + ' · ' + issue.summary + ' (' + issue.project + ' · ' + issue.status + ' · ' + issue.priority + ')' +
+        (issue.department ? ' · Department: ' + issue.department : '') +
+        (issue.client ? ' · Client: ' + issue.client : '') +
+        (issue.dueDate ? ' · Due: ' + issue.dueDate : '');
+    }).join('\n');
+    var sourceMatches = pages.filter(function (page) { return [page.title, page.space].join(' ').toLowerCase().indexOf(q) >= 0; })
+      .map(function (page) { return '• Confluence · ' + page.title + ' (space ' + page.space + ')'; })
+      .concat(repositories.filter(function (repository) { return [repository.name, repository.fullName].join(' ').toLowerCase().indexOf(q) >= 0; })
+        .map(function (repository) { return '• Bitbucket · ' + repository.fullName; }))
+      .concat(commits.filter(function (item) {
+        return [item.repository, item.commit.message, item.commit.author, item.commit.hash].join(' ').toLowerCase().indexOf(q) >= 0;
+      }).map(function (item) {
+        return '• Bitbucket commit · ' + item.repository + ' · ' + item.commit.message.split('\n')[0] + ' (' + item.commit.author + ')';
+      }));
+    if (sourceMatches.length) return sourceMatches.join('\n');
+    return 'I can search synced Jira issue and approval fields, due dates, clients, departments, Confluence page titles, Bitbucket repositories, and recent commit messages/authors. The snapshot does not include Jira issue history, Confluence page content, pull requests, or pipelines; due dates and configured custom fields are available when present, but forecasts are not generated.';
+  }
+  function setLivePrompts() {
+    PROMPTS = [
+      ['Summarize connected data', function () { return liveAnswer('summary'); }],
+      ['Show blocked issues', function () { return liveAnswer('blocked issues'); }],
+      ['Show high-priority issues', function () { return liveAnswer('high priority issues'); }],
+      ['What can this dashboard analyze?', function () { return liveAnswer('what can this dashboard analyze'); }]
+    ];
+  }
+  setLivePrompts();
   function renderChat() {
     var box = document.getElementById('chatbox');
     document.getElementById('bubble').hidden = S.chat || S.bubbleGone;
@@ -716,6 +1412,7 @@ export function initDashboard() {'use strict';
   }
   function ask(text, answer) { S.msgs.push({ who: 'me', text: text }); S.msgs.push({ who: 'ai', text: answer }); renderChat(); }
   function freeAnswer(t) {
+    if (sourceDataReceived) return liveAnswer(t);
     var q = t.toLowerCase();
     var coo = cooAnswer(q); if (coo) return coo;   // COO risk intelligence hook
     if (/client|customer/.test(q)) return PROMPTS[3][1]();
@@ -737,17 +1434,19 @@ export function initDashboard() {'use strict';
     var shellEl = document.getElementById('shell');
     body.style.zoom = 1; body.style.width = ''; body.style.margin = ''; side.style.height = ''; shellEl.style.minHeight = '';
     body.classList.remove('big');
-    if (innerWidth < 1800) { Z = 1; alignNames(); return; }
-    body.classList.add('big');
-    // Scale the page up for big screens. Then, if the whole dashboard can fit on one screen
-    // without text getting too small (TV on a wall), shrink to fit and widen the layout to use the full width.
-    function measure(w) { body.style.width = w + 'px'; alignNames(); return document.querySelector('.top').offsetHeight + app.offsetHeight; }
+    if (innerWidth < 1200 || S.page) { Z = 1; alignNames(); return; }
+    if (innerWidth >= 1800) body.classList.add('big');
+    function measure(w) {
+      body.style.width = w + 'px';
+      alignNames();
+      return document.querySelector('.top').offsetHeight + app.scrollHeight;
+    }
     var zMax = innerWidth / BASE, z = zMax;
     for (var i = 0; i < 4; i++) {
       var hNeed = measure(innerWidth / z);
       var zFit = innerHeight / hNeed;
       if (zFit >= zMax) { z = zMax; break; }
-      if (zFit < 0.8) { z = zMax; break; }           // too much to fit legibly: keep the larger size and scroll
+      if (zFit < 0.7) { z = 0.7; break; }
       if (Math.abs(zFit - z) < 0.005) { z = zFit; break; }
       z = zFit;
     }
@@ -1174,7 +1873,7 @@ export function initDashboard() {'use strict';
     if (!t) return;
     var a;
     if ((a = t.getAttribute('data-pop'))) { S.pop = S.pop === a ? null : a; renderPops(); return; }
-    if ((a = t.getAttribute('data-sev'))) { if (a === 'all') { S.sev = { c: true, h: true, m: true }; S.types = { client: true, internal: true, cross: true }; } else S.sev[a] = !S.sev[a]; renderPops(); render(); return; }
+    if ((a = t.getAttribute('data-sev'))) { if (a === 'all') { S.sev = sourceDataReceived ? { c: true, h: true, m: true, n: true } : { c: true, h: true, m: true }; S.types = { client: true, internal: true, cross: true }; } else S.sev[a] = !S.sev[a]; renderPops(); render(); return; }
     if ((a = t.getAttribute('data-ftype'))) { S.types[a] = !S.types[a]; renderPops(); render(); return; }
     if ((a = t.getAttribute('data-cell'))) { var pr = a.split('|'); S.drawer = { type: 'cell', area: pr[0], t: pr[1] }; S.open = null; tip.hidden = true; renderDrawer(); return; }
     if ((a = t.getAttribute('data-type'))) { S.drawer = { type: 'ptype', t: a }; S.open = null; tip.hidden = true; renderDrawer(); return; }
@@ -1260,39 +1959,54 @@ export function initDashboard() {'use strict';
   }
   function irow(title, lvl, body, meta) {
     return '<div class="proj" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><b>' + esc(title) + '</b>' +
-      (lvl ? '<span class="pill ' + lvl + '">' + (LEVEL[lvl] || lvl) + '</span>' : '') + '</div>' +
+      (lvl ? '<span class="pill ' + lvl + '">' + esc(levelLabel(lvl) || lvl) + '</span>' : '') + '</div>' +
       (body ? '<div style="margin-top:6px">' + esc(body) + '</div>' : '') + (meta ? '<small class="muted" style="display:block;margin-top:4px">' + esc(meta) + '</small>' : '') + '</div>';
   }
   function textBox(t) { return '<div class="proj full-text"><div style="white-space:pre-wrap">' + esc(t) + '</div><button class="btn" data-copy="' + esc(t).replace(/\n/g, '&#10;') + '">Copy to clipboard</button></div>'; }
   function infoPage(k) {
     var R = ALL().slice().sort(bySev), h = '', title, sub;
-    if (k === 'weekly') { title = 'Weekly brief'; sub = 'Health ' + healthScore() + '/100 · ' + criticalOpen().length + ' critical need action'; h = textBox(PROMPTS[0][1]() + '\n\nCritical:\n' + PROMPTS[1][1]()); }
-    else if (k === 'board') { title = 'Board pack'; sub = 'Ready-to-send update'; h = textBox(PROMPTS[5][1]()); }
-    else if (k === 'budget') { title = 'Budget at stake'; sub = 'By client · ₹ lakh'; h = stakeBy('client').map(function (x) { return irow(x[0], '', '≈ ₹' + x[1] + ' L at stake'); }).join('') || '<div class="okbox">No amounts at stake.</div>'; }
-    else if (k === 'spend') { title = 'Spend exposure'; sub = 'By department · ₹ lakh'; h = stakeBy('dept').map(function (x) { return irow(x[0], '', '≈ ₹' + x[1] + ' L at stake'); }).join('') || '<div class="okbox">No amounts at stake.</div>'; }
-    else if (k === 'register') { title = 'Risk register'; sub = R.length + ' risks · most serious first'; h = R.map(function (r) { return irow(r.project, r.lvl, r.risk, r.dept + ' · ' + (r.owner || '')); }).join(''); }
-    else if (k === 'mitig') { title = 'Mitigations'; sub = 'Action and owner per risk'; h = R.map(function (r) { return irow(r.project, r.lvl, r.action, 'Owner: ' + (r.owner || '')); }).join(''); }
+    if (k === 'weekly') {
+      title = 'Weekly brief';
+      sub = sourceDataReceived ? criticalOpen().length + ' open critical-priority Jira issues · health and trends unavailable' : 'Health ' + healthScore() + '/100 · ' + criticalOpen().length + ' critical need action';
+      h = sourceDataReceived ? textBox(PROMPTS[0][1]() + '\n\nHigh-priority issues:\n' + PROMPTS[2][1]()) : textBox(PROMPTS[0][1]() + '\n\nCritical:\n' + PROMPTS[1][1]());
+    }
+    else if (k === 'board') { title = 'Board pack'; sub = sourceDataReceived ? 'Latest connected-source summary' : 'Ready-to-send update'; h = textBox(sourceDataReceived ? liveAnswer('summary') : PROMPTS[5][1]()); }
+    else if (k === 'budget') { title = 'Budget at stake'; sub = sourceDataReceived ? 'Financial values are not provided by the connected sources.' : 'By client · ₹ lakh'; h = sourceDataReceived ? '<div class="okbox">No financial data is available in the current Jira, Confluence, or Bitbucket sync.</div>' : stakeBy('client').map(function (x) { return irow(x[0], '', '≈ ₹' + x[1] + ' L at stake'); }).join('') || '<div class="okbox">No amounts at stake.</div>'; }
+    else if (k === 'spend') { title = 'Spend exposure'; sub = sourceDataReceived ? 'Financial values are not provided by the connected sources.' : 'By department · ₹ lakh'; h = sourceDataReceived ? '<div class="okbox">No financial data is available in the current Jira, Confluence, or Bitbucket sync.</div>' : stakeBy('dept').map(function (x) { return irow(x[0], '', '≈ ₹' + x[1] + ' L at stake'); }).join('') || '<div class="okbox">No amounts at stake.</div>'; }
+    else if (k === 'register') { title = 'Risk register'; sub = sourceDataReceived ? R.length + ' Jira issues · current snapshot' : R.length + ' risks · most serious first'; h = R.map(function (r) { return irow(r.project, r.lvl, r.risk, sourceDataReceived ? r.dept + ' · ' + (r.status || 'Status not set') + ' · ' + (r.priority || 'Priority not set') : r.dept + ' · ' + (r.owner || '')); }).join(''); }
+    else if (k === 'mitig') { title = 'Mitigations'; sub = sourceDataReceived ? 'Mitigation plans are not included in the connected sources.' : 'Action and owner per risk'; h = sourceDataReceived ? '<div class="okbox">No mitigation plans or action owners are available in the synced records.</div>' : R.map(function (r) { return irow(r.project, r.lvl, r.action, 'Owner: ' + (r.owner || '')); }).join(''); }
     else if (k === 'ana') {
-      title = 'Analytics'; sub = 'Problems by level and type';
-      h = ['c', 'h', 'm'].map(function (l) { var n = ALL().filter(function (r) { return r.lvl === l; }); return irow(LEVEL[l], l, n.length + ' problems', ['client', 'internal', 'cross'].map(function (t) { return TYPE_SHORT[t] + ' ' + n.filter(function (r) { return r.type === t; }).length; }).join(' · ')); }).join('');
+      title = 'Analytics'; sub = sourceDataReceived ? 'Current Jira priority · no historical trends' : 'Problems by level and type';
+      h = (sourceDataReceived ? ['c', 'h', 'm', 'n'] : ['c', 'h', 'm']).map(function (l) {
+        var n = ALL().filter(function (r) { return r.lvl === l; });
+        return irow(sourceDataReceived ? levelLabel(l) : LEVEL[l], l, n.length + (sourceDataReceived ? ' Jira issues' : ' problems'),
+          sourceDataReceived ? 'Latest synced snapshot only' : ['client', 'internal', 'cross'].map(function (t) { return TYPE_SHORT[t] + ' ' + n.filter(function (r) { return r.type === t; }).length; }).join(' · '));
+      }).join('');
     }
     else if (k === 'perf') {
-      title = 'Performance'; sub = 'By department';
-      h = DEPTS.map(function (d) { var l = ALL().filter(function (r) { return r.dept === d.name; }); return irow(d.name, worst(l), l.length + ' risks · ' + PENDING.filter(function (p) { return p.dept === d.name; }).length + ' pending too long', 'Lead: ' + d.lead); }).join('');
+      title = sourceDataReceived ? 'Jira issues by project' : 'Performance'; sub = sourceDataReceived ? 'Current issue count and status · performance history unavailable' : 'By department';
+      h = DEPTS.map(function (d) {
+        var l = ALL().filter(function (r) { return r.dept === d.name; });
+        var statuses = {};
+        l.forEach(function (r) { if (r.status) statuses[r.status] = (statuses[r.status] || 0) + 1; });
+        var statusSummary = Object.keys(statuses).map(function (status) { return status + ': ' + statuses[status]; }).join(' · ');
+        return irow(d.name, worst(l), sourceDataReceived ? l.length + ' Jira issues' : l.length + ' risks · ' + PENDING.filter(function (p) { return p.dept === d.name; }).length + ' pending too long',
+          sourceDataReceived ? statusSummary : 'Lead: ' + d.lead);
+      }).join('');
     }
     else if (k === 'help') {
       title = 'Help center'; sub = 'Guides and shortcuts for using Control Tower';
-      h = '<section class="card help-intro"><h3>Welcome to Control Tower</h3><p>Use the dashboard to review delivery health, prioritize risks, and understand what needs action. Select a section in the left navigation to open its full page.</p><div class="help-actions"><button class="btn" data-page="register">Open risk register</button><button class="btn2" data-act="chat">Ask the AI assistant</button></div></section>' +
-        '<section class="help-grid"><article class="card"><h3>Getting started</h3><ol><li>Start with the health and critical-risk cards on Dashboard.</li><li>Open a risk to review its cause, impact, owner, and recommended action.</li><li>Use the search and filter controls to narrow the dashboard.</li><li>Open Reports, Finance, RM, Analytics, or Performance for a focused full-page view.</li></ol></article>' +
+      h = '<section class="card help-intro"><h3>Welcome to Control Tower</h3><p>' + (sourceDataReceived ? 'Review current Jira issues and the connected Confluence and Bitbucket records. Select a section in the left navigation to open its full page.' : 'Use the dashboard to review delivery health, prioritize risks, and understand what needs action. Select a section in the left navigation to open its full page.') + '</p><div class="help-actions"><button class="btn" data-page="register">Open risk register</button><button class="btn2" data-act="chat">Ask the AI assistant</button></div></section>' +
+        '<section class="help-grid"><article class="card"><h3>Getting started</h3><ol><li>' + (sourceDataReceived ? 'Start with the overall health, pending approvals, deadlines, clients, and department cards on Dashboard.' : 'Start with the health and critical-risk cards on Dashboard.') + '</li><li>' + (sourceDataReceived ? 'Open an issue to inspect its status, priority, deadline, Department, and approval fields.' : 'Open a risk to review its cause, impact, owner, and recommended action.') + '</li><li>Use the search and filter controls to narrow the dashboard.</li><li>Open Reports, Finance, RM, Analytics, or Performance for a focused full-page view.</li></ol></article>' +
         '<article class="card"><h3>Keyboard shortcuts</h3><div class="help-shortcuts">' + [['← ↑ → ↓', 'Move focus'], ['Enter / Space', 'Open the focused control'], ['Esc', 'Close a menu or panel'], ['1 · 2 · 3', 'Compare 12 hours, 7 days, or 30 days'], ['R', 'Refresh the dashboard'], ['A', 'Toggle auto-refresh'], ['F · N · C', 'Open filters, notifications, or calendar'], ['/', 'Focus search'], ['M', 'Collapse or expand the sidebar'], ['?', 'Open Help center']].map(function (x) { return '<div><kbd>' + esc(x[0]) + '</kbd><span>' + esc(x[1]) + '</span></div>'; }).join('') + '</div></article></section>' +
-        '<section class="help-grid"><article class="card"><h3>Frequently asked questions</h3><details><summary>How do I find a project or risk?</summary><p>Use the search field in the top bar. Results update on the dashboard as you type.</p></details><details><summary>What do the risk colors mean?</summary><p>Critical risks need action now, high risks need attention this week, and moderate risks should be watched.</p></details><details><summary>How do I review a mitigation?</summary><p>Open Mitigations from RM in the left navigation to see the recommended action and owner for each risk.</p></details></article>' +
-        '<article class="card"><h3>Need more help?</h3><p>Ask the built-in AI assistant about a project, department, client, or critical risk. It uses the dashboard information currently available in this workspace.</p><button class="btn" data-act="chat" style="margin-top:12px">Open AI assistant</button></article></section>';
+        '<section class="help-grid"><article class="card"><h3>Frequently asked questions</h3><details><summary>How do I find a project or risk?</summary><p>Use the search field in the top bar. Results update on the dashboard as you type.</p></details><details><summary>' + (sourceDataReceived ? 'What do the priority colors mean?' : 'What do the risk colors mean?') + '</summary><p>' + (sourceDataReceived ? 'Priority colors are based on the Jira priority field. Other, low, and unset priorities are grouped separately.' : 'Critical risks need action now, high risks need attention this week, and moderate risks should be watched.') + '</p></details><details><summary>How do I review a mitigation?</summary><p>' + (sourceDataReceived ? 'Mitigation plans and owners are not included in the current source sync.' : 'Open Mitigations from RM in the left navigation to see the recommended action and owner for each risk.') + '</p></details></article>' +
+        '<article class="card"><h3>Need more help?</h3><p>' + (sourceDataReceived ? 'Ask the built-in AI assistant about fields available in the synced Jira issues, Confluence page titles, and Bitbucket repository names. It does not infer missing history, deadlines, financial data, or ownership.' : 'Ask the built-in AI assistant about a project, department, client, or critical risk. It uses the dashboard information currently available in this workspace.') + '</p><button class="btn" data-act="chat" style="margin-top:12px">Open AI assistant</button></article></section>';
     }
     else if (k === 'settings') {
       title = 'Settings'; sub = 'Manage dashboard refresh, comparison, and display preferences';
       h = '<section class="settings-grid"><article class="card"><h3>Data refresh</h3><p class="muted">Choose whether this dashboard refreshes automatically.</p><div class="settings-actions"><button class="btn2" data-auto="toggle">' + (S.auto ? 'Auto-refresh is on · turn off' : 'Auto-refresh is off · turn on') + '</button>' +
         [15, 30, 60].map(function (s) { return '<button class="btn2' + (S.every === s ? ' selected' : '') + '" data-every="' + s + '">' + s + ' seconds</button>'; }).join('') + '</div><small class="muted">Refresh interval: ' + S.every + ' seconds</small></article>' +
-        '<article class="card"><h3>Comparison period</h3><p class="muted">Choose the time period used to compare dashboard metrics.</p><div class="settings-actions">' + Object.keys(VIEWS).map(function (v) { return '<button class="btn2' + (S.view === v ? ' selected' : '') + '" data-view="' + v + '">Last ' + esc(VIEWS[v].label) + (S.view === v ? ' · selected' : '') + '</button>'; }).join('') + '</div></article>' +
+        '<article class="card"><h3>Comparison period</h3><p class="muted">' + (sourceDataReceived ? 'Historical comparisons are unavailable; only the latest synced snapshot is provided.' : 'Choose the time period used to compare dashboard metrics.') + '</p><div class="settings-actions">' + (sourceDataReceived ? '<button class="btn2 selected" disabled>Latest snapshot · selected</button>' : Object.keys(VIEWS).map(function (v) { return '<button class="btn2' + (S.view === v ? ' selected' : '') + '" data-view="' + v + '">Last ' + esc(VIEWS[v].label) + (S.view === v ? ' · selected' : '') + '</button>'; }).join('')) + '</div></article>' +
         '<article class="card"><h3>Display and filters</h3><p class="muted">Adjust the navigation and restore the default risk filters.</p><div class="settings-actions"><button class="btn2" data-act="collapse">Toggle sidebar width</button><button class="btn2" data-sev="all">Reset all risk filters</button><button class="btn2" data-refresh>Refresh now</button></div></article>' +
         '<article class="card"><h3>Account</h3><div class="profile-summary"><span class="avatar">V</span><div><b>Vishva</b><small>Signed in to Control Tower</small></div></div><p class="muted">Account and access management are provided by your workspace administrator.</p></article></section>';
     }
@@ -1300,8 +2014,6 @@ export function initDashboard() {'use strict';
   }
   function renderFullPage() {
     var p = infoPage(S.page);
-    var sampleNotice = document.getElementById('sample-data-notice');
-    if (sampleNotice) sampleNotice.hidden = true;
     app.classList.add('page-view');
     app.innerHTML = '<section class="full-page" aria-labelledby="full-page-title"><header class="full-page-heading"><div><p class="eyebrow">CONTROL TOWER</p><h1 id="full-page-title">' + esc(p[0]) + '</h1><p class="muted">' + esc(p[1]) + '</p></div><button class="btn2" data-page="dash">← Dashboard</button></header><div class="full-page-content">' + p[2] + '</div></section>';
     document.title = p[0] + ' | Control Tower';
@@ -1325,11 +2037,16 @@ export function initDashboard() {'use strict';
     _rp();
     var nb = document.querySelector('[data-pop="notif"] .dotbadge'); if (nb) nb.hidden = S.seen;
     var n = document.getElementById('pop-notif');
-    if (S.pop === 'notif') n.insertAdjacentHTML('beforeend', '<button class="opt" data-markseen style="color:var(--accent);font-weight:600">' + (S.seen ? '✓ All seen' : 'Mark all as seen') + '</button>');
+    if (S.pop === 'notif' && !sourceDataReceived) n.insertAdjacentHTML('beforeend', '<button class="opt" data-markseen style="color:var(--accent);font-weight:600">' + (S.seen ? '✓ All seen' : 'Mark all as seen') + '</button>');
     document.querySelectorAll('#pop-cal .cal .has').forEach(function (el) { el.setAttribute('data-day', el.textContent); el.setAttribute('role', 'button'); el.tabIndex = 0; el.style.cursor = 'pointer'; });
   };
   function stamp() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
-  function refreshNow(quiet) { document.querySelector('.updated').textContent = 'Last updated ' + stamp(); render(); if (S.drawer) renderDrawer(); if (!quiet) toast('Dashboard refreshed'); }
+  function refreshNow(quiet) {
+    if (!sourceDataReceived) document.querySelector('.updated').textContent = 'Last updated ' + stamp();
+    render();
+    if (S.drawer) renderDrawer();
+    if (!quiet) toast(sourceDataReceived ? 'Latest synced snapshot refreshed' : 'Dashboard refreshed');
+  }
   function setAuto(on) { S.auto = on; clearInterval(autoTimer); if (on) autoTimer = setInterval(function () { refreshNow(true); }, S.every * 1000); toast('Auto-refresh ' + (on ? 'on · every ' + S.every + ' s' : 'off')); }
   function openPage(k) {
     S.page = k === 'dash' ? null : k;
@@ -1337,6 +2054,7 @@ export function initDashboard() {'use strict';
     shell.classList.remove('menu-open');
     document.body.classList.remove('drawer-open');
     renderPops(); renderNav(); render();
+    if (typeof fit === 'function') requestAnimationFrame(fit);
     if (!S.page) { document.title = 'Control Tower Dashboard'; window.scrollTo(0, 0); }
   }
 
@@ -1410,6 +2128,20 @@ export function initDashboard() {'use strict';
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.activeElement && document.activeElement.id === 'q') document.activeElement.blur(); });
 
+  window.addEventListener('xone-source-data', function (event) {
+    liveSourceData = event.detail || null;
+    sourceDataReceived = true;
+    applyLiveSnapshot();
+    S.sev.n = true;
+    S.types = { client: true, internal: true, cross: true };
+    setLivePrompts();
+    S.msgs = [{ who: 'ai', text: liveAnswer('summary') }];
+    renderNav();
+    renderPops();
+    render();
+    renderChat();
+    fit();
+  });
   renderNav(); renderPops(); render(); renderChat();
   setTimeout(function () { S.bubbleGone = true; renderChat(); }, 7000);
   fit();

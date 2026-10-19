@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SourceStatus, SyncState, XoneSnapshot } from '../../../shared/types';
+import SourceInsights from '../../../components/SourceInsights';
 import { getDashboardData, syncNow } from '../../services/forge-api';
 
 type IntegrationKey = 'jira' | 'confluence' | 'bitbucket';
@@ -9,6 +10,10 @@ const sourceLabels: Array<[IntegrationKey, string]> = [
   ['confluence', 'Confluence'],
   ['bitbucket', 'Bitbucket'],
 ];
+
+function publishDashboardData(snapshot: XoneSnapshot | null, state: SyncState | null) {
+  window.dispatchEvent(new CustomEvent('xone-source-data', { detail: { snapshot, state } }));
+}
 
 function sourceText(status: SourceStatus): string {
   if (status.state === 'connected') return `Connected · ${status.count} items`;
@@ -30,8 +35,10 @@ export default function ForgeIntegrationStatus() {
       const data = await getDashboardData();
       setState(data.state);
       setSnapshot(data.snapshot);
+      publishDashboardData(data.snapshot, data.state);
       setError('');
     } catch (reason) {
+      publishDashboardData(snapshot, state);
       setError(reason instanceof Error ? reason.message : 'Forge status could not be loaded.');
     } finally {
       setIsLoading(false);
@@ -44,6 +51,7 @@ export default function ForgeIntegrationStatus() {
       const data = await syncNow();
       setState(data.state);
       setSnapshot(data.snapshot);
+      publishDashboardData(data.snapshot, data.state);
       setError('');
     } catch (reason) {
       const syncError = reason instanceof Error ? reason.message : 'Source synchronization failed.';
@@ -51,8 +59,10 @@ export default function ForgeIntegrationStatus() {
         const data = await getDashboardData();
         setState(data.state);
         setSnapshot(data.snapshot);
+        publishDashboardData(data.snapshot, data.state);
       } catch (statusReason) {
         const statusError = statusReason instanceof Error ? statusReason.message : 'Status refresh failed.';
+        publishDashboardData(snapshot, state);
         setError(statusError === syncError ? syncError : `${syncError} Status refresh failed: ${statusError}`);
         return;
       }
@@ -70,7 +80,6 @@ export default function ForgeIntegrationStatus() {
     () => sourceLabels.filter(([key]) => state?.[key]?.state === 'connected').length,
     [state],
   );
-
   return (
     <div className="forge-status">
       <button
@@ -94,6 +103,7 @@ export default function ForgeIntegrationStatus() {
         ))}
         {snapshot && (
           <div className="forge-items">
+            <SourceInsights snapshot={snapshot} state={state} />
             <b>Synced records</b>
             <section className="forge-items-group" aria-label={`Jira issues, ${snapshot.jiraIssues.length} records`}>
               <b>Jira issues · {snapshot.jiraIssues.length}</b>
@@ -120,6 +130,24 @@ export default function ForgeIntegrationStatus() {
                   <small>{repository.updated}</small>
                 </p>
               ))}
+            </section>
+            <section className="forge-items-group" aria-label="Recent Bitbucket commits">
+              <b>Recent Bitbucket commits</b>
+              {snapshot.bitbucketRepositories.flatMap((repository) =>
+                (repository.recentCommits ?? []).map((commit) => ({ repository, commit })),
+              ).sort((a, b) => new Date(b.commit.date).getTime() - new Date(a.commit.date).getTime())
+                .slice(0, 10)
+                .map(({ repository, commit }) => (
+                  <p key={`${repository.fullName}:${commit.hash}`}>
+                    {commit.url
+                      ? <a href={commit.url} target="_blank" rel="noreferrer">{commit.message.split('\n')[0]}</a>
+                      : <strong>{commit.message.split('\n')[0]}</strong>}
+                    <small>{repository.fullName} · {commit.author}{commit.date ? ` · ${new Date(commit.date).toLocaleString()}` : ''}</small>
+                  </p>
+                ))}
+              {!snapshot.bitbucketRepositories.some((repository) => repository.recentCommits?.length) && (
+                <p className="forge-empty">No recent commits are available in the latest snapshot.</p>
+              )}
             </section>
             {!snapshot.jiraIssues.length && !snapshot.confluencePages.length && !snapshot.bitbucketRepositories.length && (
               <p className="forge-empty">No records are available in the latest snapshot.</p>

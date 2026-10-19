@@ -24,13 +24,13 @@
       </div>
       <div id="forge-status-slot"></div>
       <span class="spacer"></span>
-      <span class="updated">Last updated 10:45</span>
+      <span class="updated">Loading source data…</span>
       <div class="anchor">
-        <button class="tbtn icon" data-pop="notif" aria-label="Notifications" title="Notifications"><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="dotbadge">3</span></button>
+        <button class="tbtn icon" data-pop="notif" aria-label="Source sync status" title="Source sync status"><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></button>
         <div class="pop" id="pop-notif" hidden style="width:320px"></div>
       </div>
       <div class="anchor">
-        <button class="tbtn" data-pop="view"><span class="lbl">View:&nbsp;</span><b id="viewlbl">30 days</b><svg class="i" viewBox="0 0 24 24" style="width:16px"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="tbtn" data-pop="view"><span class="lbl">View:&nbsp;</span><b id="viewlbl">Latest</b><svg class="i" viewBox="0 0 24 24" style="width:16px"><path d="m6 9 6 6 6-6"/></svg></button>
         <div class="pop" id="pop-view" hidden></div>
       </div>
       <div class="anchor">
@@ -38,22 +38,19 @@
         <div class="pop" id="pop-cal" hidden></div>
       </div>
       <div class="anchor profile-slot">
-        <button class="tbtn user" data-pop="profile" aria-label="Profile menu for Vishva" aria-haspopup="true" aria-expanded="false">
-          <span class="avatar sm">V</span><span class="uname">Vishva</span><svg class="i" viewBox="0 0 24 24" style="width:16px"><path d="m6 9 6 6 6-6"/></svg>
+        <button class="tbtn user" data-pop="profile" aria-label="Profile menu" aria-haspopup="true" aria-expanded="false">
+          <span class="avatar sm">P</span><span class="uname">Profile</span><svg class="i" viewBox="0 0 24 24" style="width:16px"><path d="m6 9 6 6 6-6"/></svg>
         </button>
         <div class="pop profile-pop" id="pop-profile" hidden></div>
       </div>
     </div></header>
 
-    <div class="sample-data-notice" id="sample-data-notice" role="status">
-      Risk metrics below are sample data. Forge currently syncs source records, but the R1–R13 risk rules are not yet connected to these metrics.
-    </div>
     <main class="page" id="app"></main>
   </div>
 </div>
 
 <div class="agent" id="agent">
-  <span class="bubble" id="bubble">4 critical risks need action. Ask me for a briefing.</span>
+  <span class="bubble" id="bubble">Ask about the connected source data.</span>
   <button class="fab" data-act="chat" aria-label="Open AI agent">AI</button>
 </div>
 <div id="chatbox"></div>

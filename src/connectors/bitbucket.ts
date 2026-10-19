@@ -1,5 +1,10 @@
 import type { BitbucketRepositorySummary, SourceResult } from '../shared/types.ts';
-import { mapBitbucketRepositories, type BitbucketRepoResponse } from '../sync/normalise';
+import {
+  mapBitbucketCommits,
+  mapBitbucketRepositories,
+  type BitbucketCommitsResponse,
+  type BitbucketRepoResponse,
+} from '../sync/normalise';
 import { fetchBitbucketAccessToken } from './bitbucket-auth';
 import { requestJson } from './http';
 
@@ -51,8 +56,37 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
     nextUrl = body.next;
   }
 
+  for (const repository of data) {
+    const repositoryPath = repository.fullName.split('/').map(encodeURIComponent).join('/');
+    const commitsUrl = new URL(
+      `https://api.bitbucket.org/2.0/repositories/${repositoryPath}/commits?pagelen=10`,
+    );
+    const body = await requestJson<BitbucketCommitsResponse>(
+      commitsUrl,
+      {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        redirect: 'error',
+      },
+      {
+        expectedHost: 'api.bitbucket.org',
+        errorMessage:
+          `Bitbucket could not read recent commits for ${repository.fullName}. Check that the OAuth consumer has repository read permission.`,
+        redact: [token, clientId, clientSecret],
+      },
+    );
+    repository.recentCommits = mapBitbucketCommits(body);
+  }
+  const commitCount = data.reduce(
+    (count, repository) => count + (repository.recentCommits?.length ?? 0),
+    0,
+  );
+
   return {
     data,
-    status: { state: 'connected', count: data.length, message: `Fetched ${data.length} Bitbucket repositories.` },
+    status: {
+      state: 'connected',
+      count: data.length,
+      message: `Fetched ${data.length} Bitbucket repositories and ${commitCount} recent commits.`,
+    },
   };
 }

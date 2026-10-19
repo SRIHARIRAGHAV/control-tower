@@ -13,10 +13,25 @@ export interface JiraSearchResponse {
       priority?: { name?: string };
       project?: { name?: string };
       updated?: string;
+      created?: string;
+      duedate?: string;
+      [fieldId: string]: unknown;
     };
   }>;
   isLast?: boolean;
   nextPageToken?: string;
+}
+
+export interface JiraCustomFieldIds {
+  department?: string;
+  impactedDepartment?: string;
+  client?: string;
+  customerImpact?: string;
+  mitigation?: string;
+  owner?: string;
+  cooDecision?: string;
+  cooApprover?: string;
+  approvalDate?: string;
 }
 
 export interface ConfluencePagesResponse {
@@ -39,7 +54,34 @@ export interface BitbucketRepoResponse {
   next?: string;
 }
 
-export function mapJiraIssues(body: JiraSearchResponse): JiraIssueSummary[] {
+export interface BitbucketCommitsResponse {
+  values?: Array<{
+    hash: string;
+    message?: string;
+    date?: string;
+    author?: { raw?: string };
+    links?: { html?: { href?: string } };
+  }>;
+}
+
+function jiraFieldText(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) {
+    const values = value.map(jiraFieldText).filter((item): item is string => Boolean(item));
+    return values.length ? values.join(' ') : undefined;
+  }
+  if (value && typeof value === 'object') {
+    const field = value as Record<string, unknown>;
+    for (const key of ['displayName', 'value', 'name', 'text', 'content']) {
+      const text = jiraFieldText(field[key]);
+      if (text) return text;
+    }
+  }
+  return undefined;
+}
+
+export function mapJiraIssues(body: JiraSearchResponse, customFields: JiraCustomFieldIds = {}): JiraIssueSummary[] {
   return (body.issues ?? []).map((issue) => ({
     key: issue.key,
     summary: issue.fields?.summary ?? '',
@@ -47,6 +89,17 @@ export function mapJiraIssues(body: JiraSearchResponse): JiraIssueSummary[] {
     priority: issue.fields?.priority?.name ?? 'Unset',
     project: issue.fields?.project?.name ?? 'Unknown',
     updated: issue.fields?.updated ?? '',
+    createdAt: issue.fields?.created,
+    dueDate: jiraFieldText(issue.fields?.duedate),
+    department: customFields.department ? jiraFieldText(issue.fields?.[customFields.department]) : undefined,
+    impactedDepartment: customFields.impactedDepartment ? jiraFieldText(issue.fields?.[customFields.impactedDepartment]) : undefined,
+    client: customFields.client ? jiraFieldText(issue.fields?.[customFields.client]) : undefined,
+    customerImpact: customFields.customerImpact ? jiraFieldText(issue.fields?.[customFields.customerImpact]) : undefined,
+    mitigation: customFields.mitigation ? jiraFieldText(issue.fields?.[customFields.mitigation]) : undefined,
+    owner: customFields.owner ? jiraFieldText(issue.fields?.[customFields.owner]) : undefined,
+    cooDecision: customFields.cooDecision ? jiraFieldText(issue.fields?.[customFields.cooDecision]) : undefined,
+    cooApprover: customFields.cooApprover ? jiraFieldText(issue.fields?.[customFields.cooApprover]) : undefined,
+    approvalDate: customFields.approvalDate ? jiraFieldText(issue.fields?.[customFields.approvalDate]) : undefined,
   }));
 }
 
@@ -65,5 +118,15 @@ export function mapBitbucketRepositories(body: BitbucketRepoResponse): Bitbucket
     fullName: repository.full_name,
     url: repository.links?.html?.href ?? '',
     updated: repository.updated_on ?? '',
+  }));
+}
+
+export function mapBitbucketCommits(body: BitbucketCommitsResponse): NonNullable<BitbucketRepositorySummary['recentCommits']> {
+  return (body.values ?? []).map((commit) => ({
+    hash: commit.hash,
+    message: commit.message ?? '',
+    author: commit.author?.raw ?? 'Unknown author',
+    date: commit.date ?? '',
+    url: commit.links?.html?.href ?? '',
   }));
 }

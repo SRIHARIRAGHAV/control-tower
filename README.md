@@ -1,10 +1,10 @@
 # Xone
 
 Xone is a Jira Cloud global-page app built with Atlassian Forge Custom UI,
-React, TypeScript, Forge Functions, and Forge Custom Entity Store. The
-dashboard currently keeps its original sample risk metrics; Forge integration
-status and the latest synced Jira, Confluence, and Bitbucket records are shown
-in the **Sources** menu.
+React, TypeScript, Forge Functions, and Forge Custom Entity Store. Its live
+dashboard displays the latest synced Jira, Confluence, and Bitbucket records,
+with rule-based issue-attention indicators derived from Jira status and
+priority. It does not substitute generated sample metrics for live records.
 
 ## Architecture
 
@@ -89,6 +89,26 @@ not used.
 
 ## Connected sources
 
+The dashboard uses **only live connected-source data**. Use **Sync sources
+now** to fetch Jira, Confluence, and Bitbucket records and refresh the stored
+snapshot. It does not generate or substitute mock records in the dashboard.
+
+The dashboard flags open Jira issues with blocked statuses or high/urgent
+priorities. These are transparent current-state indicators, not predictions.
+Jira sync also fetches due dates and, when present, the custom fields named
+Department, Impacted department, Client, Customer impact, Mitigation, Owner,
+COO decision, COO approver, and Approval date. Create/map the Department
+fields in Jira to classify issues; records without a Department remain
+Unassigned rather than being inferred from their project name. The dashboard
+shows six highest-priority departments at a time, with the other department
+records available from the collapsed list. Due dates appear in the deadline
+timeline, while approval fields and approval age appear in the COO approval
+summary. Overall health is a current status/priority index, not a prediction.
+Jira issue history is not fetched. Confluence sync
+fetches page metadata only, while Bitbucket sync fetches repository metadata
+and recent commits (not page content, source code, or pull requests). Do not
+interpret the current indicators as a forecast or financial risk score.
+
 Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is optional and uses a Bitbucket OAuth consumer with repository read
 permission, configured through **encrypted Forge variables**:
 
@@ -104,7 +124,10 @@ put them in frontend code. After configuring the variables, deploy again and
 use **Sync sources now** from the Sources menu.
 
 Jira sync is restricted to projects the app can browse because Jira rejects
-unbounded JQL searches. Confluence uses the v2 pages API to read page summaries
+unbounded JQL searches. To sync one specific Jira project, set the Forge
+variable `JIRA_PROJECT_KEY` to its project key (for example, `KAN`). When it is
+not set, the app searches projects where the signed-in user has browse
+permission. Confluence uses the v2 pages API to read page summaries
 and requests the granular `read:page:confluence` scope required by that API.
 
 Live verification requires deploying and installing the Forge app in a Jira

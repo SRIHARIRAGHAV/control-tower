@@ -5,6 +5,17 @@ export interface JiraIssueSummary {
   priority: string;
   project: string;
   updated: string;
+  createdAt?: string;
+  dueDate?: string;
+  department?: string;
+  impactedDepartment?: string;
+  client?: string;
+  customerImpact?: string;
+  mitigation?: string;
+  owner?: string;
+  cooDecision?: string;
+  cooApprover?: string;
+  approvalDate?: string;
 }
 
 export interface ConfluencePageSummary {
@@ -14,11 +25,20 @@ export interface ConfluencePageSummary {
   url: string;
 }
 
+export interface BitbucketCommitSummary {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+  url: string;
+}
+
 export interface BitbucketRepositorySummary {
   name: string;
   fullName: string;
   url: string;
   updated: string;
+  recentCommits?: BitbucketCommitSummary[];
 }
 
 export interface SourceStatus {
