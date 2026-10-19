@@ -101,9 +101,15 @@ COO decision, COO approver, and Approval date. Create/map the Department
 fields in Jira to classify issues; records without a Department remain
 Unassigned rather than being inferred from their project name. The dashboard
 shows six highest-priority departments at a time, with the other department
-records available from the collapsed list. Due dates appear in the deadline
-timeline, while approval fields and approval age appear in the COO approval
-summary. Overall health is a current status/priority index, not a prediction.
+records available from the collapsed list. Department cards summarize live
+priority counts, client/internal/cross-department issue counts, handoffs, and
+oldest known issue age. The organisation impact section shows an issue-priority
+matrix, affected clients with their linked Jira issues, and department handoffs.
+These summaries use populated Jira fields; missing department, client, or impact
+values are called out instead of being inferred. Due dates appear in the
+deadline timeline, while approval fields and approval age appear in the COO
+approval summary. Overall health is a current status/priority index, not a
+prediction.
 Jira issue history is not fetched. Confluence sync
 fetches page metadata only, while Bitbucket sync fetches repository metadata
 and recent commits (not page content, source code, or pull requests). Do not

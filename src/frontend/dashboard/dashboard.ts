@@ -758,20 +758,52 @@ export function initDashboard() {'use strict';
       featured.forEach(function (item) {
         var department = item.department, issues = item.issues, severity = item.highest;
         if (item.unassigned) {
+          var unassignedTop = issues.slice().sort(bySev)[0];
+          var unassignedAge = issues.filter(function (issue) { return issue.createdAt; }).sort(function (a, b) { return b.age - a.age; })[0];
           h += '<button class="dept" data-dept="Unassigned" style="--lc:' + FILL[severity] + '">' +
-            '<span class="name">Department not assigned</span><span class="head"><span class="n num">' + issues.length + '</span><span>issues</span>' +
-            '<span class="pill ' + severity + '">' + LEVEL[severity] + '</span></span>' +
-            '<span class="oldest warn">Set the Jira Department field to classify</span></button>';
+            '<span class="name">Department not assigned</span><span class="head"><span class="n num">' + issues.length + '</span><span>' +
+            (issues.length === 1 ? 'open issue' : 'open issues') + '</span><span class="pill ' + severity + '">' + levelLabel(severity) + '</span></span>' +
+            '<span class="dept-top-issue">' + esc(unassignedTop.key + ' · ' + unassignedTop.risk) + '</span>' +
+            '<small>' + esc(unassignedTop.project + ' · ' + unassignedTop.status + ' · ' + unassignedTop.priority) + '</small>' +
+            '<span class="rows">' + ['c', 'h', 'm', 'n'].map(function (level) {
+              var number = issues.filter(function (issue) { return issue.lvl === level; }).length;
+              return number ? '<div><i style="background:' + FILL[level] + '"></i>' + esc(levelLabel(level)) + '<b>' + number + '</b></div>' : '';
+            }).join('') + '</span>' +
+            '<span class="oldest warn">' + (unassignedAge ? 'Oldest open: ' + unassignedAge.age + ' days' : 'Jira Department field is not populated') + '</span></button>';
           shown++;
           return;
         }
         var highestIssue = issues.slice().sort(function (a, b) { return RANK[a.lvl] - RANK[b.lvl]; })[0];
+        var oldestIssue = issues.filter(function (issue) { return issue.createdAt; }).sort(function (a, b) { return b.age - a.age; })[0];
+        var severityCounts = ['c', 'h', 'm', 'n'].map(function (level) {
+          var number = issues.filter(function (issue) { return issue.lvl === level; }).length;
+          return number ? '<div><i style="background:' + FILL[level] + '"></i>' + esc(levelLabel(level)) + '<b>' + number + '</b></div>' : '';
+        }).join('');
+        var clientCount = issues.filter(function (issue) { return Boolean(issue.client); }).length;
+        var internalCount = issues.filter(function (issue) { return liveIssueType(issue) === 'internal'; }).length;
+        var crossCount = issues.filter(function (issue) { return liveIssueType(issue) === 'cross'; }).length;
+        var waitingOnOthers = RISKS.filter(function (issue) {
+          return issue.open && issue.impactedDepartment === department.name;
+        }).length;
+        var holdingOthers = RISKS.filter(function (issue) {
+          return issue.open && issue.dept === department.name && liveIssueType(issue) === 'cross';
+        }).length;
         h += '<button class="dept" data-dept="' + esc(department.name) + '" style="--lc:' + FILL[severity] + '">' +
           '<span class="name">' + esc(department.name) + '</span>' +
-          '<span class="head"><span class="n num" style="color:' + (severity === 'c' ? 'var(--crit-ink)' : severity === 'h' ? 'var(--high-ink)' : 'var(--fg)') + '">' + issues.length + '</span><span>' + (issues.length === 1 ? 'issue' : 'issues') + '</span>' +
+          '<span class="head"><span class="n num" style="color:' + (severity === 'c' ? 'var(--crit-ink)' : severity === 'h' ? 'var(--high-ink)' : 'var(--fg)') + '">' + issues.length + '</span><span>' + (issues.length === 1 ? 'open issue' : 'open issues') + '</span>' +
           '<span class="pill ' + severity + '">' + LEVEL[severity] + '</span></span>' +
           '<span class="dept-top-issue">' + esc(highestIssue.key + ' · ' + highestIssue.risk) + '</span>' +
-          '<small>' + esc(highestIssue.project + ' · ' + highestIssue.status + (highestIssue.client ? ' · affects ' + highestIssue.client : '')) + '</small></button>';
+          '<small>' + esc(highestIssue.project + ' · ' + highestIssue.status + (highestIssue.client ? ' · affects ' + highestIssue.client : '')) + '</small>' +
+          '<span class="mix">' + (clientCount ? tyChip('client', clientCount + ' client') : '') +
+            (internalCount ? tyChip('internal', internalCount + ' internal') : '') +
+            (crossCount ? tyChip('cross', crossCount + ' cross-dept') : '') + '</span>' +
+          (holdingOthers || waitingOnOthers ? '<span class="waits">' +
+            (holdingOthers ? 'Holding up others: <b>' + holdingOthers + '</b>' : '') +
+            (holdingOthers && waitingOnOthers ? ' · ' : '') +
+            (waitingOnOthers ? 'Waiting on others: <b>' + waitingOnOthers + '</b>' : '') + '</span>' : '') +
+          '<span class="rows">' + severityCounts + '</span>' +
+          '<span class="oldest ' + (oldestIssue && oldestIssue.age > STUCK_DAYS ? 'warn' : '') + '">' +
+            (oldestIssue ? 'Oldest open: ' + oldestIssue.age + ' days' : 'Open age unavailable from Jira') + '</span></button>';
         shown++;
       });
       var otherDepartments = departmentSummary.slice(featured.length);
@@ -934,36 +966,103 @@ export function initDashboard() {'use strict';
   //   2. Clients affected: which clients are exposed, how much is at stake, what is next
   //   3. Between departments: which team is holding up which, and why
   // =====================================================================
+  function liveIssueType(issue) {
+    if (issue.impactedDepartment && issue.dept !== 'Unassigned' && issue.dept !== issue.impactedDepartment) return 'cross';
+    if (issue.client) return 'client';
+    if (issue.dept !== 'Unassigned') return 'internal';
+    return '';
+  }
   function impactSection() {
     if (sourceDataReceived) {
-      var issuesWithImpact = RISKS.filter(function (issue) { return issue.open && issue.customerImpact; }).sort(bySev);
+      var openIssues = RISKS.filter(function (issue) { return issue.open && matches(issue); }).sort(bySev);
+      var impactTypes = ['client', 'internal', 'cross'];
+      var typedIssues = { client: [], internal: [], cross: [] };
+      openIssues.forEach(function (issue) {
+        var type = liveIssueType(issue);
+        if (type) typedIssues[type].push(issue);
+      });
+      var unclassifiedIssues = openIssues.filter(function (issue) { return !liveIssueType(issue); });
+      var priorityRows = [
+        ['c', 'Critical'], ['h', 'High risk'], ['m', 'Moderate'], ['n', 'Other']
+      ];
       var clientIssues = {};
-      RISKS.forEach(function (issue) {
-        if (issue.open && issue.client) (clientIssues[issue.client] = clientIssues[issue.client] || []).push(issue);
+      openIssues.forEach(function (issue) {
+        if (issue.client) (clientIssues[issue.client] = clientIssues[issue.client] || []).push(issue);
       });
       var clients = Object.keys(clientIssues).sort(function (a, b) {
         return RANK[worst(clientIssues[a])] - RANK[worst(clientIssues[b])] || clientIssues[b].length - clientIssues[a].length;
       });
-      var crossIssues = RISKS.filter(function (issue) {
-        return issue.open && issue.from && issue.to && issue.from !== issue.to;
-      }).sort(bySev);
-      return '<div class="sect" id="sec-impact"><h2>Impact on the organisation</h2></div>' +
+      var crossIssues = typedIssues.cross;
+      var fromCounts = {};
+      crossIssues.forEach(function (issue) { fromCounts[issue.from] = (fromCounts[issue.from] || 0) + 1; });
+      var topFrom = Object.keys(fromCounts).sort(function (a, b) {
+        return fromCounts[b] - fromCounts[a] || a.localeCompare(b);
+      })[0];
+      var markup = '<div class="sect" id="sec-impact"><h2>Impact on the organisation</h2><span class="typekey">' +
+        impactTypes.map(function (type) {
+          return '<span data-tip="' + esc(TYPE_HINT[type]) + '">' + tyChip(type, TYPE[type]) + '</span>';
+        }).join('') + '</span></div>' +
         '<section class="imp" aria-label="Impact on the organisation">' +
-        '<div class="card mx"><div class="ch"><h3>Customer impact</h3><span class="pill ' + (issuesWithImpact.length ? 'h' : 'n') + '">' + issuesWithImpact.length + ' issues</span></div>' +
-        (issuesWithImpact.length ? issuesWithImpact.slice(0, 3).map(function (issue) {
-          return '<button class="live-impact-row" data-ev="' + esc(issue.id) + '"><b>' + esc(issue.key + ' · ' + issue.risk) + '</b><small>' + esc(issue.customerImpact) + '</small></button>';
-        }).join('') : '<p class="muted">Customer impact values will appear here when entered in Jira.</p>') + '</div>' +
-        '<div class="card"><div class="ch"><h3>Clients affected</h3><span class="pill ' + (clients.length ? 'h' : 'n') + '">' + clients.length + '</span></div>' +
-        (clients.length ? clients.slice(0, 4).map(function (client) {
-          var records = clientIssues[client].slice().sort(bySev), topIssue = records[0];
-          return '<button class="cli" data-client="' + esc(client) + '"><span class="dot" style="background:' + FILL[worst(records)] + '"></span><span class="nm">' + esc(client) +
-            '</span><span class="amt">' + records.length + '</span><small>' + esc(topIssue.key + ' · ' + topIssue.risk + ' · ' + topIssue.dept) + '</small></button>';
-        }).join('') : '<p class="muted">No client names are set on the synced Jira issues.</p>') + '</div>' +
-        '<div class="card"><div class="ch"><h3>Between departments</h3><span class="pill ' + (crossIssues.length ? 'h' : 'n') + '">' + crossIssues.length + '</span></div>' +
-        (crossIssues.length ? crossIssues.slice(0, 3).map(function (issue) {
-          return '<button class="live-impact-row" data-ev="' + esc(issue.id) + '"><b>' + esc(issue.from + ' → ' + issue.to) + '</b><small>' + esc(issue.key + ' · ' + issue.risk) + '</small></button>';
-        }).join('') : '<p class="muted">To show cross-department impact, set both Department and Impacted department on the Jira issue.</p>') + '</div>' +
-        '</section>';
+        '<div class="card mx"><div class="ch"><h3>What the problems hit</h3><span class="muted" style="font-size:12px">' + openIssues.length + ' open issues</span></div>' +
+        '<p class="def">Live Jira issues grouped by priority and client, department, or cross-department impact.</p>' +
+        '<table class="mxt live-mxt"><thead><tr><th scope="col"></th>' +
+        impactTypes.map(function (type) {
+          return '<th scope="col"><span>' + tyChip(type) + '<b>' + typedIssues[type].length + '</b></span></th>';
+        }).join('') + '</tr></thead><tbody>' +
+        priorityRows.map(function (row) {
+          var levelIssues = openIssues.filter(function (issue) { return issue.lvl === row[0]; });
+          return '<tr><th scope="row" class="rl">' + row[1] + '<small>' + levelIssues.length + ' open</small></th>' +
+            impactTypes.map(function (type) {
+              var cellIssues = typedIssues[type].filter(function (issue) { return issue.lvl === row[0]; });
+              return '<td>' + (cellIssues.length
+                ? '<button class="cell ' + row[0] + '" data-impact-cell="' + row[0] + '|' + type + '" aria-label="Show ' + cellIssues.length + ' ' + row[1] + ' ' + TYPE[type] + ' issues">' + cellIssues.length + '</button>'
+                : '<span class="cell z" aria-label="none">–</span>') + '</td>';
+            }).join('') + '</tr>';
+        }).join('') + '</tbody></table>' +
+        (unclassifiedIssues.length
+          ? '<p class="muted live-unclassified">' + unclassifiedIssues.length + ' open issue' + (unclassifiedIssues.length === 1 ? '' : 's') +
+            ' not classified yet. Add Department, Client, or both Department and Impacted department in Jira.</p>'
+          : '') + '</div>' +
+        '<div class="card"><div class="ch"><h3>Clients affected</h3><span class="pill ' + (clients.length ? 'h' : 'n') + '">' + clients.length + ' clients</span></div>' +
+        (clients.length ? (function () {
+          var topClient = clients[0], topRecords = clientIssues[topClient];
+          var teamNames = {};
+          topRecords.forEach(function (issue) {
+            if (issue.dept !== 'Unassigned') teamNames[issue.dept] = true;
+            if (issue.impactedDepartment) teamNames[issue.impactedDepartment] = true;
+          });
+          return '<p class="callout blue"><b>' + esc(topClient) + '</b> has the most open issues: ' + topRecords.length +
+            ' across ' + Object.keys(teamNames).length + ' assigned department' + (Object.keys(teamNames).length === 1 ? '' : 's') + '.</p>' +
+            clients.slice(0, 4).map(function (client) {
+              var records = clientIssues[client].slice().sort(bySev), topIssue = records[0];
+              var departments = {};
+              records.forEach(function (issue) {
+                if (issue.dept !== 'Unassigned') departments[issue.dept] = true;
+                if (issue.impactedDepartment) departments[issue.impactedDepartment] = true;
+              });
+              var nextDue = records.filter(function (issue) { return issue.dueDate; }).sort(function (a, b) {
+                return String(a.dueDate).localeCompare(String(b.dueDate));
+              })[0];
+              return '<button class="cli" data-client="' + esc(client) + '"><span class="dot" style="background:' + FILL[worst(records)] + '"></span>' +
+                '<span class="nm">' + esc(client) + '</span><span class="amt">' + records.length + ' issue' + (records.length === 1 ? '' : 's') + '</span>' +
+                '<small>' + records.length + ' open · ' + Object.keys(departments).length + ' department' +
+                (Object.keys(departments).length === 1 ? '' : 's') + ' · ' + esc(topIssue.key + ' ' + topIssue.risk) +
+                (nextDue ? ' · due ' + esc(nextDue.dueDate) : '') + '</small></button>';
+            }).join('') +
+            '<p class="muted live-unclassified">Financial exposure is not estimated because no validated amount is synced from Jira.</p>';
+        })() : '<p class="muted">No open Jira issues have a Client value. Populate the Client field to show affected clients and their linked problems.</p>') + '</div>' +
+        '<div class="card"><div class="ch"><h3>Between departments</h3><span class="pill ' + (crossIssues.length ? 'h' : 'n') + '">' + crossIssues.length + ' handoffs</span></div>' +
+        (topFrom ? '<p class="callout"><b>' + esc(topFrom) + '</b> is the source of ' + fromCounts[topFrom] + ' of ' + crossIssues.length +
+          ' handoffs. Each item below shows the affected department and live Jira status.</p>' : '') +
+        (crossIssues.length ? crossIssues.slice(0, 4).map(function (issue) {
+          return '<button class="flow" data-ev="' + esc(issue.id) + '"><span class="fr"><span class="dchip">' + esc(issue.from) +
+            '</span><span class="arr" aria-label="to">→</span><span class="dchip to">' + esc(issue.to) + '</span>' +
+            '<span class="pill ' + issue.lvl + '">' + esc(levelLabel(issue.lvl)) + '</span></span>' +
+            '<span class="ft">' + esc(issue.key + ' · ' + issue.risk) + '</span>' +
+            '<small>' + esc([issue.status, issue.client ? 'Affects ' + issue.client : '', issue.mitigation ? 'Mitigation: ' + issue.mitigation : ''].filter(Boolean).join(' · ')) + '</small></button>';
+        }).join('') : '<p class="muted">No cross-department handoffs are classified yet. Set both Department and Impacted department on the Jira issue.</p>') +
+        '</div></section>';
+      return markup;
     }
     var P = problems(), types = ['client', 'internal', 'cross'];
     var all = RISKS.concat(POTENTIAL);
@@ -1253,6 +1352,12 @@ export function initDashboard() {'use strict';
     } else if (D.type === 'cell') {
       list = RISKS.concat(POTENTIAL).filter(function (r) { return r.area === D.area && r.type === D.t && matches(r); }).sort(bySev);
       title = D.area; sub = TYPE[D.t] + ' · ' + list.length + ' problems · most serious first';
+    } else if (D.type === 'live-impact-cell') {
+      list = RISKS.filter(function (issue) {
+        return issue.open && issue.lvl === D.level && liveIssueType(issue) === D.impactType && matches(issue);
+      }).sort(bySev);
+      title = levelLabel(D.level) + ' · ' + TYPE[D.impactType];
+      sub = list.length + ' open Jira issue' + (list.length === 1 ? '' : 's') + ' · most serious first';
     } else if (D.type === 'ptype') {
       list = RISKS.concat(POTENTIAL).filter(function (r) { return r.type === D.t && matches(r); }).sort(bySev);
       title = TYPE[D.t] + ' problems'; sub = TYPE_HINT[D.t] + ' · ' + list.length + ' in total';
@@ -1875,6 +1980,11 @@ export function initDashboard() {'use strict';
     if ((a = t.getAttribute('data-pop'))) { S.pop = S.pop === a ? null : a; renderPops(); return; }
     if ((a = t.getAttribute('data-sev'))) { if (a === 'all') { S.sev = sourceDataReceived ? { c: true, h: true, m: true, n: true } : { c: true, h: true, m: true }; S.types = { client: true, internal: true, cross: true }; } else S.sev[a] = !S.sev[a]; renderPops(); render(); return; }
     if ((a = t.getAttribute('data-ftype'))) { S.types[a] = !S.types[a]; renderPops(); render(); return; }
+    if ((a = t.getAttribute('data-impact-cell'))) {
+      var liveImpact = a.split('|');
+      S.drawer = { type: 'live-impact-cell', level: liveImpact[0], impactType: liveImpact[1] };
+      S.open = null; tip.hidden = true; renderDrawer(); return;
+    }
     if ((a = t.getAttribute('data-cell'))) { var pr = a.split('|'); S.drawer = { type: 'cell', area: pr[0], t: pr[1] }; S.open = null; tip.hidden = true; renderDrawer(); return; }
     if ((a = t.getAttribute('data-type'))) { S.drawer = { type: 'ptype', t: a }; S.open = null; tip.hidden = true; renderDrawer(); return; }
     if ((a = t.getAttribute('data-client'))) { S.drawer = { type: 'client', client: a }; S.open = null; renderDrawer(); return; }
