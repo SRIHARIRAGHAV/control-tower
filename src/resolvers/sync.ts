@@ -1,8 +1,8 @@
-import { syncAndStore } from '../sync/snapshot';
+import { syncSources } from '../backend/handlers/source-handlers';
 import { resolver } from './registry';
 
 resolver.define('syncNow', async () => {
-  const result = await syncAndStore();
+  const result = await syncSources();
   if ([result.state.jira, result.state.confluence, result.state.bitbucket].every(
     (source) => source.state === 'error' || source.state === 'not-configured',
   )) {
@@ -12,7 +12,7 @@ resolver.define('syncNow', async () => {
 });
 
 export async function hourlySync() {
-  const result = await syncAndStore();
+  const result = await syncSources();
   if ([result.state.jira, result.state.confluence, result.state.bitbucket].every(
     (source) => source.state === 'error' || source.state === 'not-configured',
   )) {
