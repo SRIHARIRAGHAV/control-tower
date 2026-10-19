@@ -593,7 +593,7 @@ body.big .page{padding-bottom:18px}
 .live-impact-row small{font-size:11.5px;line-height:1.25;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 @media (min-width:1200px){
   .page.executive-view{height:auto;min-height:calc(100vh - 66px);overflow:visible;padding:10px 14px;gap:10px;grid-template-columns:minmax(0,1fr) 300px;align-items:start}
-  .executive-view .maincol{height:auto;min-height:0;overflow:visible;display:grid;gap:6px;grid-template-rows:none}
+  .executive-view .maincol{height:auto;min-height:0;overflow:visible;display:grid;gap:6px;grid-template-rows:none;grid-auto-rows:max-content;align-content:start}
   .executive-view .rail{height:auto;min-height:0;overflow:visible;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:none;gap:8px}
   .executive-view .rail>.card{min-height:0;overflow:visible;padding:10px 12px}
   .executive-view .rail>.card:nth-child(2),.executive-view .rail>.card:nth-child(3),.executive-view .rail>.card:nth-child(5){display:none}
@@ -625,7 +625,7 @@ body.big .page{padding-bottom:18px}
   .executive-view .imp .cli{padding:4px 0;grid-template-columns:9px minmax(0,1fr) auto}
   .executive-view .imp .cli small{grid-column:2/-1}
   .executive-view .imp .muted{font-size:10.5px;line-height:1.25}
-  .executive-view .depts{min-height:0;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);gap:6px}
+  .executive-view .depts{min-height:0;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:max-content;align-content:start;gap:6px}
   .executive-view .dept{min-height:0;padding:8px 10px 8px 12px;gap:4px}
   .executive-view .dept .name{min-height:0;-webkit-line-clamp:1;font-size:12px}
   .executive-view .dept .head .n{font-size:20px}
