@@ -415,6 +415,7 @@ export function initDashboard() {'use strict';
     h += '</aside>';
 
     app.innerHTML = h;
+    slideify();
     alignNames();
     if (innerWidth >= 1800 && typeof fit === 'function') requestAnimationFrame(fit);
   }
@@ -1151,6 +1152,66 @@ export function initDashboard() {'use strict';
   // ===================== end COO risk intelligence =====================
 
   // =====================================================================
+  // SWIPE LAYOUT (add-on). Runs after every render(): it only MOVES the cards render() already built
+  // into two slides, so markup, classes, click handlers and data bindings stay exactly as they were.
+  //   Slide 1 "COO priorities"          verdict · 5 KPI cards · plan + decisions · AI summary · COO risk areas
+  //   Slide 2 "Organisation & timeline" impact on the organisation · departments · timeline
+  // =====================================================================
+  var SLIDES = ['COO priorities', 'Organisation & timeline'];
+  function mk(tag, cls) { var n = document.createElement(tag); n.className = cls; return n; }
+  // SWIPE LAYOUT v2 - replaces the old slideify(). Cards are only MOVED (or one removed), never rebuilt.
+  //   Slide 1 "COO priorities":  verdict | 4-5 KPI cards | Impact on the organisation (What the problems hit,
+  //                              Clients affected, Between departments) | Department not assigned + COO approvals
+  //                              right rail: AI summary, Recommended executive plan (compact), COO risk areas
+  //   Slide 2 "Organisation & timeline": Departments (the rest) | timeline
+  //   "Recent Bitbucket commits" is removed from the page.
+  function slideify() {
+    var pg = document.getElementById('pager');
+    var main = app.querySelector(':scope > .maincol'), rail = app.querySelector(':scope > .rail');
+    if (!main || !rail) { if (pg) pg.hidden = true; return; }       // loading / full-page views keep their own layout
+    function railCard(re) {                                          // find a rail card by its heading text
+      return [].slice.call(rail.children).filter(function (n) { var h = n.querySelector('h3'); return h && re.test(h.textContent); })[0];
+    }
+    var commits = railCard(/recent bitbucket commits/i), plan = railCard(/recommended executive plan/i),
+        decisions = railCard(/^(COO approvals|Decisions awaiting approval)/i), ai = rail.querySelector('.ai');
+    var unassigned = main.querySelector('.depts [data-dept="Unassigned"]');   // "Department not assigned" card (live data only)
+    if (commits) commits.remove();                                   // 1. remove Recent Bitbucket commits
+    if (plan && ai) ai.after(plan);                                  // 2. plan sits under the AI summary, same narrow width
+    var s1 = mk('div', 'page slide s1'), s2 = mk('div', 'page slide s2'), m1 = mk('div', 'maincol'), m2 = mk('div', 'maincol'), pair = mk('div', 'pair');
+    [].slice.call(main.children).forEach(function (n) {              // 3. impact section (header + 3 cards) goes to slide 1
+      (n.matches('.verdict,.kpis,.imp') || n.id === 'sec-impact' ? m1 : m2).appendChild(n);
+    });
+    if (unassigned) pair.appendChild(unassigned);                    // 4. Department not assigned ...
+    if (decisions) pair.appendChild(decisions);                      //    ... next to the COO approvals card
+    if (pair.children.length) m1.appendChild(pair);
+    s1.appendChild(m1); s1.appendChild(rail); s2.appendChild(m2);
+    var deck = mk('div', 'deck'); deck.appendChild(s1); deck.appendChild(s2);
+    app.innerHTML = ''; app.classList.add('swipe'); app.appendChild(deck);
+    deck.style.scrollBehavior = 'auto'; deck.scrollLeft = (S.slide || 0) * deck.clientWidth; deck.style.scrollBehavior = '';
+    deck.addEventListener('scroll', function () { S.slide = Math.round(deck.scrollLeft / (deck.clientWidth || 1)); markPager(); }, { passive: true });
+    if (!pg) {
+      pg = mk('nav', 'pager'); pg.id = 'pager'; pg.setAttribute('aria-label', 'Dashboard slides');
+      pg.innerHTML = SLIDES.map(function (t, i) { return '<button data-slide="' + i + '">' + t + '</button>'; }).join('');
+      pg.addEventListener('click', function (e) { var b = e.target.closest('[data-slide]'); if (b) goSlide(+b.getAttribute('data-slide')); });
+      document.body.appendChild(pg);
+    }
+    pg.hidden = false; markPager();
+  }
+  function goSlide(i) {
+    var deck = app.querySelector('.deck'); if (!deck) return;
+    i = Math.max(0, Math.min(SLIDES.length - 1, i));
+    deck.scrollTo({ left: i * deck.clientWidth, behavior: 'smooth' });
+  }
+  function markPager() {
+    [].forEach.call(document.querySelectorAll('#pager button'), function (b) { b.classList.toggle('on', +b.getAttribute('data-slide') === (S.slide || 0)); });
+  }
+  document.addEventListener('keydown', function (e) {     // ← / → also swipe (not while typing or a drawer is open)
+    if (e.target.closest && e.target.closest('input,textarea') || S.drawer || S.chat) return;
+    if (e.key === 'ArrowRight') goSlide((S.slide || 0) + 1);
+    if (e.key === 'ArrowLeft') goSlide((S.slide || 0) - 1);
+  });
+
+  // =====================================================================
   // EVENTS
   // =====================================================================
   var shell = document.getElementById('shell');
@@ -1333,8 +1394,8 @@ export function initDashboard() {'use strict';
   document.addEventListener('keydown', function (e) {
     var typing = /INPUT|TEXTAREA/.test(document.activeElement.tagName);
     if (e.altKey || e.ctrlKey || e.metaKey) return;
-    var arrows = { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'U', ArrowDown: 'D' };
-    if (arrows[e.key] && !(typing && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))) { e.preventDefault(); moveFocus(arrows[e.key]); return; }
+    var arrows = { ArrowUp: 'U', ArrowDown: 'D' };
+    if (arrows[e.key]) { e.preventDefault(); moveFocus(arrows[e.key]); return; }
     if ((e.key === 'Enter' || e.key === ' ') && document.activeElement.matches('[role="button"]')) { e.preventDefault(); document.activeElement.click(); return; }
     if (e.key === 'Backspace' && !typing) { if (S.drawer || S.pop || S.chat) { e.preventDefault(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); } return; }
     if (typing) return;

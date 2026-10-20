@@ -499,3 +499,37 @@ body.big .page{padding-bottom:18px}
   .coo .cra{border-top:1px solid var(--line)}
 }
 @media (max-width:640px){.sys{grid-template-columns:1fr;gap:2px}.sys .sn{justify-self:start}}
+
+/* ================= SWIPE LAYOUT (add-on; delete this block + slideify() to go back to vertical scrolling) =================
+   Card styles are untouched. Only the arrangement changes: two slides side by side, swiped horizontally. */
+main.page.swipe{display:block;padding:0}                       /* #app becomes the viewport of the deck */
+.deck{display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-behavior:smooth;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+.deck::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;min-width:0;padding-bottom:72px;scroll-snap-align:start;scroll-snap-stop:always}   /* each slide re-uses .page's grid + padding */
+.slide.s2{grid-template-columns:minmax(0,1fr)}                 /* slide 2 has no right rail: full width */
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
+@container main (max-width:640px){.pair{grid-template-columns:minmax(0,1fr)}}
+@container page (max-width:1180px){.s1 .rail .ai{grid-column:1/-1}}
+/* pager: two tabs that mirror the swipe position */
+.pager{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;display:flex;gap:4px;padding:4px;
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:var(--pop)}
+.pager[hidden]{display:none}
+.pager button{height:32px;padding:0 14px;border:none;border-radius:999px;background:none;font-weight:600;font-size:13px;color:var(--muted);white-space:nowrap}
+.pager button.on{background:var(--accent);color:#fff}
+@media (max-width:640px){.pager{left:14px;transform:none;bottom:22px;max-width:calc(100vw - 92px)}.pager button{padding:0 10px;font-size:12px;overflow:hidden;text-overflow:ellipsis}}
+/* timeline buckets: swipe sideways instead of stacking down the page when the card is narrow */
+@container (max-width:720px){
+  .deck .weeks{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none}
+  .deck .wk{display:flex;flex-direction:column;flex:0 0 min(78%,280px);padding-bottom:0;scroll-snap-align:start}
+  .deck .wk .rail{grid-column:auto;grid-row:auto;height:18px;align-items:center;justify-content:flex-start;padding-top:0}
+  .deck .wk .rail::before{left:0;right:-12px;top:50%;bottom:auto;width:auto;height:3px;transform:translateY(-50%)}
+  .deck .wk:last-child .rail::before{display:block;right:0}
+  .deck .wk .head{display:block}
+}
+/* phones: department cards swipe too */
+@container page (max-width:560px){
+  .deck .depts{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding-bottom:6px;scrollbar-width:none}
+  .deck .depts>*{flex:0 0 82%;scroll-snap-align:start}
+}
+.pair>:only-child{grid-column:1/-1}   /* a lone card in the pair row takes the full width */
