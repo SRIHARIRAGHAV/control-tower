@@ -33,6 +33,7 @@ export interface JiraCustomFieldIds {
   cooDecision?: string;
   cooApprover?: string;
   approvalDate?: string;
+  deliveryInitiative?: string;
 }
 
 export interface ConfluencePagesResponse {
@@ -65,43 +66,91 @@ export interface BitbucketCommitsResponse {
   }>;
 }
 
-function jiraFieldText(value: unknown): string | undefined {
-  if (typeof value === 'string') return value;
+function normalizeText(value: unknown): string | undefined {
+  if (value == null) return undefined;
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : undefined;
+  }
+
   if (typeof value === 'number') return String(value);
   if (Array.isArray(value)) {
-    const values = value.map(jiraFieldText).filter((item): item is string => Boolean(item));
+    const values = value.map(normalizeText).filter((item): item is string => Boolean(item));
     return values.length ? values.join(' ') : undefined;
   }
   if (value && typeof value === 'object') {
     const field = value as Record<string, unknown>;
     for (const key of ['displayName', 'value', 'name', 'text', 'content']) {
-      const text = jiraFieldText(field[key]);
+      const text = normalizeText(field[key]);
       if (text) return text;
+    }
+
+    if (Array.isArray(field.content)) {
+      const nested = field.content.map(normalizeText).filter((item): item is string => Boolean(item));
+      if (nested.length) return nested.join(' ');
     }
   }
   return undefined;
+}
+
+function normalizeDate(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
+const jiraStatusMap: Record<string, string> = {
+  blocked: 'Blocked',
+  'in progress': 'In Progress',
+  'to do': 'To Do',
+  monitoring: 'In Progress',
+  'at risk': 'In Progress',
+  open: 'To Do',
+  'waiting on approval': 'In Progress',
+  'waiting for approval': 'In Progress',
+  done: 'Done',
+  resolved: 'Done',
+  closed: 'Done',
+  complete: 'Done',
+  completed: 'Done',
+};
+
+function normalizeJiraStatus(value: string | undefined): string {
+  if (!value) return 'Unknown';
+  const trimmed = value.trim();
+  return jiraStatusMap[trimmed.toLowerCase()] ?? trimmed;
+}
+
+function normalizePriority(value: string | undefined): string {
+  if (!value) return 'Unset';
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : 'Unset';
 }
 
 export function mapJiraIssues(body: JiraSearchResponse, customFields: JiraCustomFieldIds = {}): JiraIssueSummary[] {
   return (body.issues ?? []).map((issue) => ({
     key: issue.key,
     summary: issue.fields?.summary ?? '',
-    status: issue.fields?.status?.name ?? 'Unknown',
-    priority: issue.fields?.priority?.name ?? 'Unset',
+    status: normalizeJiraStatus(issue.fields?.status?.name),
+    priority: normalizePriority(issue.fields?.priority?.name),
     project: issue.fields?.project?.name ?? 'Unknown',
     updated: issue.fields?.updated ?? '',
-    createdAt: issue.fields?.created,
-    resolvedAt: issue.fields?.resolutiondate ?? undefined,
-    dueDate: jiraFieldText(issue.fields?.duedate),
-    department: customFields.department ? jiraFieldText(issue.fields?.[customFields.department]) : undefined,
-    impactedDepartment: customFields.impactedDepartment ? jiraFieldText(issue.fields?.[customFields.impactedDepartment]) : undefined,
-    client: customFields.client ? jiraFieldText(issue.fields?.[customFields.client]) : undefined,
-    customerImpact: customFields.customerImpact ? jiraFieldText(issue.fields?.[customFields.customerImpact]) : undefined,
-    mitigation: customFields.mitigation ? jiraFieldText(issue.fields?.[customFields.mitigation]) : undefined,
-    owner: customFields.owner ? jiraFieldText(issue.fields?.[customFields.owner]) : undefined,
-    cooDecision: customFields.cooDecision ? jiraFieldText(issue.fields?.[customFields.cooDecision]) : undefined,
-    cooApprover: customFields.cooApprover ? jiraFieldText(issue.fields?.[customFields.cooApprover]) : undefined,
-    approvalDate: customFields.approvalDate ? jiraFieldText(issue.fields?.[customFields.approvalDate]) : undefined,
+    createdAt: normalizeDate(issue.fields?.created),
+    resolvedAt: normalizeDate(issue.fields?.resolutiondate ?? undefined),
+    dueDate: normalizeDate(issue.fields?.duedate),
+    department: customFields.department ? normalizeText(issue.fields?.[customFields.department]) : undefined,
+    impactedDepartment: customFields.impactedDepartment ? normalizeText(issue.fields?.[customFields.impactedDepartment]) : undefined,
+    client: customFields.client ? normalizeText(issue.fields?.[customFields.client]) : undefined,
+    customerImpact: customFields.customerImpact ? normalizeText(issue.fields?.[customFields.customerImpact]) : undefined,
+    mitigation: customFields.mitigation ? normalizeText(issue.fields?.[customFields.mitigation]) : undefined,
+    owner: customFields.owner ? normalizeText(issue.fields?.[customFields.owner]) : undefined,
+    cooDecision: customFields.cooDecision ? normalizeText(issue.fields?.[customFields.cooDecision]) : undefined,
+    cooApprover: customFields.cooApprover ? normalizeText(issue.fields?.[customFields.cooApprover]) : undefined,
+    approvalDate: customFields.approvalDate ? normalizeDate(issue.fields?.[customFields.approvalDate]) : undefined,
+    deliveryInitiative: customFields.deliveryInitiative
+      ? normalizeText(issue.fields?.[customFields.deliveryInitiative])
+      : undefined,
   }));
 }
 

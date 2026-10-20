@@ -97,8 +97,8 @@ The dashboard flags open Jira issues with blocked statuses or high/urgent
 priorities. These are transparent current-state indicators, not predictions.
 Jira sync also fetches due dates and, when present, the custom fields named
 Department, Impacted department, Client, Customer impact, Mitigation, Owner,
-COO decision, COO approver, and Approval date. Create/map the Department
-fields in Jira to classify issues; records without a Department remain
+COO decision, COO approver, Approval date, and Delivery initiative. Create/map
+the Department fields in Jira to classify issues; records without a Department remain
 Unassigned rather than being inferred from their project name. The dashboard
 shows six highest-priority departments at a time, with the other department
 records shown two at a time in a paged department carousel. Department cards summarize live

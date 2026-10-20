@@ -30,6 +30,7 @@ describe('mapJiraIssues', () => {
           customfield_10005: { value: 'Pending' },
           customfield_10006: { displayName: 'COO User' },
           customfield_10007: '2026-10-29',
+          customfield_10020: ' Portal Modernisation ',
         },
       }],
     }, {
@@ -42,6 +43,7 @@ describe('mapJiraIssues', () => {
       cooDecision: 'customfield_10005',
       cooApprover: 'customfield_10006',
       approvalDate: 'customfield_10007',
+      deliveryInitiative: 'customfield_10020',
     });
 
     expect(issue).toMatchObject({
@@ -58,16 +60,32 @@ describe('mapJiraIssues', () => {
       cooDecision: 'Pending',
       cooApprover: 'COO User',
       approvalDate: '2026-10-29',
+      deliveryInitiative: 'Portal Modernisation',
     });
+  });
+
+  it('normalizes synthetic workflow statuses to Jira workflow statuses', () => {
+    const [monitoring, atRisk, waiting] = mapJiraIssues({
+      issues: [
+        { key: 'KAN-2', fields: { status: { name: 'Monitoring' } } },
+        { key: 'KAN-3', fields: { status: { name: 'At Risk' } } },
+        { key: 'KAN-4', fields: { status: { name: 'Waiting for approval' } } },
+      ],
+    });
+
+    expect(monitoring.status).toBe('In Progress');
+    expect(atRisk.status).toBe('In Progress');
+    expect(waiting.status).toBe('In Progress');
   });
 
   it('keeps Jira custom fields optional when no values are available', () => {
     const [issue] = mapJiraIssues({
-      issues: [{ key: 'KAN-2', fields: { summary: 'No custom values' } }],
+      issues: [{ key: 'KAN-5', fields: { summary: 'No custom values' } }],
     });
 
     expect(issue.dueDate).toBeUndefined();
     expect(issue.resolvedAt).toBeUndefined();
     expect(issue.cooDecision).toBeUndefined();
+    expect(issue.deliveryInitiative).toBeUndefined();
   });
 });

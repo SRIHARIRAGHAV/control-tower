@@ -14,6 +14,7 @@ const CUSTOM_FIELD_NAMES: Record<keyof JiraCustomFieldIds, string> = {
   cooDecision: 'COO decision',
   cooApprover: 'COO approver',
   approvalDate: 'Approval date',
+  deliveryInitiative: 'Delivery initiative',
 };
 
 interface JiraFieldDefinition {

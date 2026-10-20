@@ -19,6 +19,7 @@ export interface JiraIssueSummary {
   cooDecision?: string;
   cooApprover?: string;
   approvalDate?: string;
+  deliveryInitiative?: string;
 }
 
 export interface ConfluencePageSummary {
