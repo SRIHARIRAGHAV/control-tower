@@ -130,7 +130,7 @@ export function initDashboard() {'use strict';
   // =====================================================================
   var S = {
     view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null, wkOpen: {},
-    drawer: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
+    drawer: null, page: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
     msgs: [{ who: 'ai', text: 'Good morning, Vishva. 4 critical risks need action (≈ ₹45 L at stake), 5 items have been pending over a week, and 6 risks are coming in the next 30 days. Pick a topic below or type your own.' }]
   };
   var app = document.getElementById('app'), layer = document.getElementById('layer'), tip = document.getElementById('tip');
@@ -214,16 +214,23 @@ export function initDashboard() {'use strict';
   // =====================================================================
   function renderNav() {
     var h = '';
+    var pageNav = { weekly: 'rep', board: 'rep', budget: 'fin', spend: 'fin', register: 'rm', mitig: 'rm' };
+    var currentNav = S.page ? pageNav[S.page] || S.page : 'dash';
     NAV.forEach(function (n) {
-      var on = n.k === 'dash';
+      var on = n.k === currentNav;
       h += '<button class="nav' + (on ? ' on' : '') + '" data-nav="' + n.k + '"' + (n.sub ? ' aria-expanded="' + !!S.nav[n.k] + '"' : '') + ' title="' + n.label + '">' +
         '<svg class="i" viewBox="0 0 24 24">' + n.icon + '</svg><span class="lbl">' + n.label + '</span>' +
         (n.sub ? '<svg class="i chev" viewBox="0 0 24 24" style="width:16px"><path d="m6 9 6 6 6-6"/></svg>' : '') + '</button>';
       if (n.sub && S.nav[n.k]) h += '<div class="sub">' + n.sub.map(function (x, i) {
-        return '<a href="' + x[1] + '"' + (on && i === 0 ? ' class="on"' : '') + '>' + x[0] + '</a>';
+        var subPages = { 'Weekly brief': 'weekly', 'Board pack': 'board', 'Budget': 'budget', 'Spend': 'spend', 'Risk register': 'register', 'Mitigations': 'mitig' };
+        return '<a href="' + x[1] + '"' + (S.page === subPages[x[0]] ? ' class="on"' : '') + '>' + x[0] + '</a>';
       }).join('') + '</div>';
     });
     document.getElementById('menu').innerHTML = h;
+    var help = document.querySelector('[data-stub="Help center"]');
+    var settings = document.querySelector('[data-stub="Settings"]');
+    if (help) help.classList.toggle('on', S.page === 'help');
+    if (settings) settings.classList.toggle('on', S.page === 'settings');
   }
 
   // =====================================================================
@@ -245,6 +252,7 @@ export function initDashboard() {'use strict';
   function stakeOpen() { return criticalOpen().reduce(function (a, r) { return a + (r.stake || 0); }, 0); }
 
   function render() {
+    if (S.page) { renderFullPage(); return; }
     var V = VIEWS[S.view];
     var critOpen = criticalOpen(), off = offTrackProjects(), stuck = stuckItems();
     var stake = stakeOpen(), score = healthScore();
@@ -414,6 +422,7 @@ export function initDashboard() {'use strict';
     h += cooRiskCard();   // COO risk intelligence hook
     h += '</aside>';
 
+    app.classList.remove('full-view');
     app.innerHTML = h;
     slideify();
     alignNames();
@@ -1302,7 +1311,7 @@ export function initDashboard() {'use strict';
       (lvl ? '<span class="pill ' + lvl + '">' + (LEVEL[lvl] || lvl) + '</span>' : '') + '</div>' +
       (body ? '<div style="margin-top:6px">' + esc(body) + '</div>' : '') + (meta ? '<small class="muted" style="display:block;margin-top:4px">' + esc(meta) + '</small>' : '') + '</div>';
   }
-  function textBox(t) { return '<div class="proj" style="padding:14px;white-space:pre-wrap">' + esc(t) + '</div><button class="btn" data-copy="' + esc(t).replace(/\n/g, '&#10;') + '" style="margin-top:10px">Copy to clipboard</button>'; }
+  function textBox(t) { return '<div class="proj full-copy"><div>' + esc(t) + '</div><button class="btn" data-copy="' + esc(t).replace(/\n/g, '&#10;') + '">Copy to clipboard</button></div>'; }
   function infoPage(k) {
     var R = ALL().slice().sort(bySev), h = '', title, sub;
     if (k === 'weekly') { title = 'Weekly brief'; sub = 'Health ' + healthScore() + '/100 · ' + criticalOpen().length + ' critical need action'; h = textBox(PROMPTS[0][1]() + '\n\nCritical:\n' + PROMPTS[1][1]()); }
@@ -1325,15 +1334,33 @@ export function initDashboard() {'use strict';
     }
     else if (k === 'settings') {
       title = 'Settings'; sub = 'Display and refresh';
-      h = '<div class="proj" style="padding:14px"><b>Auto-refresh</b><div style="display:flex;gap:8px;margin-top:8px"><button class="btn2" data-auto="toggle">' + (S.auto ? 'On · turn off' : 'Off · turn on') + '</button>' +
+      h = '<div class="proj settings-group"><b>Auto-refresh</b><div class="settings-actions"><button class="btn2" data-auto="toggle">' + (S.auto ? 'On · turn off' : 'Off · turn on') + '</button>' +
         [15, 30, 60].map(function (s) { return '<button class="btn2" data-every="' + s + '"' + (S.every === s ? ' style="border-color:var(--accent);font-weight:700"' : '') + '>' + s + ' s</button>'; }).join('') + '</div></div>' +
-        '<div class="proj" style="padding:14px"><b>Display</b><div style="display:flex;gap:8px;margin-top:8px"><button class="btn2" data-act="collapse">Collapse sidebar</button><button class="btn2" data-sev="all">Reset filters</button><button class="btn2" data-refresh>Refresh now</button></div></div>';
+        '<div class="proj settings-group"><b>Display</b><div class="settings-actions"><button class="btn2" data-act="collapse">Collapse sidebar</button><button class="btn2" data-sev="all">Reset filters</button><button class="btn2" data-refresh>Refresh now</button></div></div>';
     }
     return [title, sub, h];
   }
   function dayPage(d) {
     var l = ALL().filter(function (r) { return dateOf(r.day).getDate() === d; }).sort(bySev);
     return ['Due ' + short(d - TODAY.getDate()), l.length + ' items', l.map(function (r) { return irow(r.project, r.lvl, r.risk, r.dept + ' · ' + (r.owner || '')); }).join('') || '<div class="okbox">Nothing due.</div>'];
+  }
+  function renderFullPage() {
+    var pg = document.getElementById('pager');
+    if (pg) pg.hidden = true;
+    app.classList.remove('swipe');
+    var page = infoPage(S.page);
+    app.classList.add('full-view');
+    app.innerHTML = '<div class="full-page"><header class="full-page-head"><div><h1>' + esc(page[0]) + '</h1><p>' + esc(page[1]) + '</p></div>' +
+      '<button class="btn2" type="button" data-page-home>Back to dashboard</button></header><section class="full-page-grid" aria-label="' + esc(page[0]) + '">' +
+      (page[2] || '<div class="okbox">No information is available.</div>') + '</section></div>';
+  }
+  function goDashboard() {
+    S.page = null;
+    S.drawer = null;
+    S.pop = null;
+    renderNav();
+    renderPops();
+    render();
   }
   var _rd = renderDrawer;
   renderDrawer = function () {
@@ -1354,22 +1381,46 @@ export function initDashboard() {'use strict';
   function stamp() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   function refreshNow(quiet) { document.querySelector('.updated').textContent = 'Last updated ' + stamp(); render(); if (S.drawer) renderDrawer(); if (!quiet) toast('Dashboard refreshed'); }
   function setAuto(on) { S.auto = on; clearInterval(autoTimer); if (on) autoTimer = setInterval(function () { refreshNow(true); }, S.every * 1000); toast('Auto-refresh ' + (on ? 'on · every ' + S.every + ' s' : 'off')); }
-  function openInfo(k) { S.drawer = { type: 'info', k: k }; S.open = null; S.pop = null; renderPops(); renderDrawer(); }
+  function openInfo(k) {
+    S.page = k;
+    S.drawer = null;
+    S.open = null;
+    S.pop = null;
+    var parent = { weekly: 'rep', board: 'rep', budget: 'fin', spend: 'fin', register: 'rm', mitig: 'rm' }[k];
+    if (parent) S.nav[parent] = true;
+    shell.classList.remove('menu-open');
+    renderNav();
+    renderPops();
+    render();
+  }
 
   var up = document.querySelector('.updated'); up.setAttribute('role', 'button'); up.tabIndex = 0; up.style.cursor = 'pointer'; up.title = 'Refresh now';
 
   document.addEventListener('click', function (e) {          // capture: runs before the original handler
     var t = e.target.closest('button,a,[data-day],.updated'); if (!t) return;
     var a, stop = true;
-    if (t.matches('.updated')) refreshNow();
+    if (t.hasAttribute('data-page-home')) goDashboard();
+    else if (t.matches('.updated')) refreshNow();
     else if ((a = t.getAttribute('data-stub'))) openInfo(a === 'Settings' ? 'settings' : 'help');
+    else if (t.hasAttribute('data-nav') && t.getAttribute('data-nav') === 'dash') goDashboard();
     else if (t.hasAttribute('data-nav') && ['ana', 'perf'].indexOf(t.getAttribute('data-nav')) >= 0) openInfo(t.getAttribute('data-nav'));
-    else if (t.matches('.sub a') && t.getAttribute('href') === '#') { e.preventDefault(); shell.classList.remove('menu-open'); openInfo(SUBMAP[t.textContent.trim()] || 'register'); }
+    else if (t.matches('.sub a')) {
+      e.preventDefault();
+      var subLabel = t.textContent.trim(), target = t.getAttribute('href');
+      if (SUBMAP[subLabel]) openInfo(SUBMAP[subLabel]);
+      else {
+        goDashboard();
+        if (target && target.charAt(0) === '#') {
+          var section = document.getElementById(target.slice(1));
+          if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }
     else if (t.hasAttribute('data-markseen')) { S.seen = true; renderPops(); toast('Notifications marked as seen'); }
     else if ((a = t.getAttribute('data-day'))) { S.drawer = { type: 'day', d: +a }; S.pop = null; renderPops(); renderDrawer(); }
     else if (t.hasAttribute('data-copy')) { var tx = t.getAttribute('data-copy'); try { navigator.clipboard.writeText(tx).then(function () { toast('Copied'); }, function () { toast('Copy blocked by the browser'); }); } catch (x) { toast('Copy blocked by the browser'); } }
-    else if (t.hasAttribute('data-auto')) { setAuto(!S.auto); renderDrawer(); }
-    else if ((a = t.getAttribute('data-every'))) { S.every = +a; if (S.auto) setAuto(true); renderDrawer(); }
+    else if (t.hasAttribute('data-auto')) { setAuto(!S.auto); render(); }
+    else if ((a = t.getAttribute('data-every'))) { S.every = +a; if (S.auto) setAuto(true); render(); }
     else if (t.hasAttribute('data-refresh')) refreshNow();
     else stop = false;
     if (stop) e.stopImmediatePropagation();
@@ -1397,7 +1448,8 @@ export function initDashboard() {'use strict';
     var arrows = { ArrowUp: 'U', ArrowDown: 'D' };
     if (arrows[e.key]) { e.preventDefault(); moveFocus(arrows[e.key]); return; }
     if ((e.key === 'Enter' || e.key === ' ') && document.activeElement.matches('[role="button"]')) { e.preventDefault(); document.activeElement.click(); return; }
-    if (e.key === 'Backspace' && !typing) { if (S.drawer || S.pop || S.chat) { e.preventDefault(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); } return; }
+    if (e.key === 'Backspace' && !typing) { if (S.page) { e.preventDefault(); goDashboard(); } else if (S.drawer || S.pop || S.chat) { e.preventDefault(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); } return; }
+    if (e.key === 'Escape' && S.page) { goDashboard(); return; }
     if (typing) return;
     var k = e.key.toLowerCase(), v = { '1': '12h', '2': '7d', '3': '30d' }[k];
     if (v) { S.view = v; S.pop = null; renderPops(); render(); }
