@@ -616,9 +616,8 @@ export function initDashboard() {'use strict';
     var unknownApprovalAge = pendingApprovals.filter(function (issue) {
       return !issue.createdAt || Number.isNaN(new Date(issue.createdAt).getTime());
     }).length;
-    var bitbucketRepositories = liveSourceData && liveSourceData.snapshot
-      ? liveSourceData.snapshot.bitbucketRepositories || [] : [];
-    var bitbucketCommits = bitbucketRepositories.reduce(function (all, repository) {
+    var bitbucketCommits = (liveSourceData && liveSourceData.snapshot
+      ? liveSourceData.snapshot.bitbucketRepositories || [] : []).reduce(function (all, repository) {
       return all.concat((repository.recentCommits || []).map(function (commit) {
         return { repository: repository.fullName, commit: commit };
       }));
@@ -931,20 +930,7 @@ export function initDashboard() {'use strict';
       })() +
       '<li><span class="tag t-n">Cause</span><span>Fraud model drift began when the new payment partner went live.</span></li>') + '</ul></section>';
 
-    h += '<section class="card"><div class="ch"><h3>Recent Bitbucket commits</h3><span class="pill ' + (bitbucketCommits.length ? 'n' : 'm') + '">' + bitbucketCommits.length + '</span></div>';
-    h += bitbucketCommits.length ? bitbucketCommits.slice(0, 10).map(function (item) {
-      var commit = item.commit;
-      var message = (commit.message || '').split('\n')[0] || 'Commit message unavailable';
-      return '<p class="forge-source commit-source">' + (commit.url
-        ? '<a href="' + esc(commit.url) + '" target="_blank" rel="noreferrer">' + esc(message) + '</a>'
-        : '<span>' + esc(message) + '</span>') +
-        '<small>' + esc(item.repository + ' · ' + commit.author + (commit.date ? ' · ' + new Date(commit.date).toLocaleString() : '')) + '</small></p>';
-    }).join('') : '<p class="muted">' + (bitbucketRepositories.length
-      ? 'No commits were returned. Check repository read permission or confirm these repositories contain commits.'
-      : 'No Bitbucket repositories are available to read commit activity from.') + '</p>';
-    h += '</section>';
-
-    h += '<section class="card"><div class="ch"><h3>Recommended executive plan</h3></div><p class="def" style="margin-top:-4px">' +
+    h += '<section class="card executive-plan"><div class="ch"><h3>Recommended executive plan</h3></div><p class="def" style="margin-top:-4px">' +
       (sourceDataReceived ? 'Imported mitigation text and owners are available in each Jira issue; executive recommendations are not generated from those fields.' : 'Three moves that remove the most risk') + '</p><div>' +
       (sourceDataReceived ? '<p class="muted">Open a Jira issue in the timeline or issue list to review its imported owner and mitigation.</p>' : PLAN.map(function (a, i) {
         return '<div class="aitem"><span class="no">' + (i + 1) + '</span><div><div class="t">' + esc(a.text) + '</div><small>' + esc(a.why) + ' · with <b>' + esc(a.owner) + '</b></small></div></div>';
@@ -958,7 +944,7 @@ export function initDashboard() {'use strict';
       return !/^(approved|rejected|declined)$/i.test((issue.cooDecision || '').trim());
     }).length;
     var pending = DECISIONS.filter(function (d) { return !S.dec[d.id]; }).length;
-    h += '<section class="card"><div class="ch"><h3>' + (sourceDataReceived ? 'COO approvals' : 'Decisions awaiting approval') + '</h3>' +
+    h += '<section class="card coo-approvals"><div class="ch"><h3>' + (sourceDataReceived ? 'COO approvals' : 'Decisions awaiting approval') + '</h3>' +
       (sourceDataReceived
         ? '<span class="pill ' + (liveApprovals.length && pendingApprovals ? 'h' : 'n') + '">' + (liveApprovals.length ? pendingApprovals + ' pending' : 'No records') + '</span>'
         : '<span class="pill ' + (pending ? 'h' : 'n') + '">' + pending + ' pending</span>') + '</div>' +
@@ -1064,12 +1050,11 @@ export function initDashboard() {'use strict';
       var topFrom = Object.keys(fromCounts).sort(function (a, b) {
         return fromCounts[b] - fromCounts[a] || a.localeCompare(b);
       })[0];
-      var markup = '<div class="sect" id="sec-impact"><h2>Impact on the organisation</h2><span class="typekey">' +
+      var markup = '<section class="impact-priority" aria-label="What the problems hit"><div class="sect"><h2>What the problems hit</h2><span class="typekey">' +
         impactTypes.map(function (type) {
           return '<span data-tip="' + esc(TYPE_HINT[type]) + '">' + tyChip(type, TYPE[type]) + '</span>';
         }).join('') + '</span></div>' +
-        '<section class="imp" aria-label="Impact on the organisation">' +
-        '<div class="card mx"><div class="ch"><h3>What the problems hit</h3><span class="muted" style="font-size:12px">' + openIssues.length + ' open issues</span></div>' +
+        '<div class="card mx"><div class="ch"><h3>Impact by priority</h3><span class="muted" style="font-size:12px">' + openIssues.length + ' open issues</span></div>' +
         '<p class="def">Live Jira issues grouped by priority and client, department, or cross-department impact.</p>' +
         '<table class="mxt live-mxt"><thead><tr><th scope="col"></th>' +
         impactTypes.map(function (type) {
@@ -1088,7 +1073,9 @@ export function initDashboard() {'use strict';
         (unclassifiedIssues.length
           ? '<p class="muted live-unclassified">' + unclassifiedIssues.length + ' open issue' + (unclassifiedIssues.length === 1 ? '' : 's') +
             ' not classified yet. Add Department, Client, or both Department and Impacted department in Jira.</p>'
-          : '') + '</div>' +
+          : '') + '</div></section>' +
+        '<div class="sect" id="sec-impact"><h2>Clients and department impact</h2></div>' +
+        '<section class="imp" aria-label="Clients and department impact">' +
         '<div class="card"><div class="ch"><h3>Clients affected</h3><span class="pill ' + (clients.length ? 'h' : 'n') + '">' + clients.length + ' clients</span></div>' +
         (clients.length ? clients.slice(0, 3).map(function (client) {
               var records = clientIssues[client].slice().sort(bySev), topIssue = records[0];
@@ -1121,12 +1108,11 @@ export function initDashboard() {'use strict';
     }
     var P = problems(), types = ['client', 'internal', 'cross'];
     var all = RISKS.concat(POTENTIAL);
-    var h = '<div class="sect" id="sec-impact"><h2>Impact on the organisation</h2><span class="typekey">' +
-      types.map(function (t) { return '<span data-tip="' + esc(TYPE_HINT[t]) + '">' + tyChip(t, TYPE[t]) + '</span>'; }).join('') + '</span></div>' +
-      '<section class="imp" aria-label="Impact on the organisation">';
+    var h = '<section class="impact-priority" aria-label="What the problems hit"><div class="sect"><h2>What the problems hit</h2><span class="typekey">' +
+      types.map(function (t) { return '<span data-tip="' + esc(TYPE_HINT[t]) + '">' + tyChip(t, TYPE[t]) + '</span>'; }).join('') + '</span></div>';
 
     // ---- 1. impact map ----
-    h += '<div class="card mx"><div class="ch"><h3>What the problems hit</h3><span class="muted" style="font-size:12px">' + P.length + ' problems</span></div>' +
+    h += '<div class="card mx"><div class="ch"><h3>Impact by priority</h3><span class="muted" style="font-size:12px">' + P.length + ' problems</span></div>' +
       '<p class="def">Current and expected problems · colour = most serious · click any number</p>' +
       '<table class="mxt"><thead><tr><th scope="col"><span class="sr" style="position:absolute;left:-9999px">Area</span></th>' +
       types.map(function (t) {
@@ -1143,7 +1129,7 @@ export function initDashboard() {'use strict';
       });
       h += '</tr>';
     });
-    h += '</tbody></table></div>';
+    h += '</tbody></table></div></section><div class="sect" id="sec-impact"><h2>Clients and department impact</h2></div><section class="imp" aria-label="Clients and department impact">';
 
     // ---- 2. clients affected ----
     var clients = {};
@@ -2049,13 +2035,20 @@ export function initDashboard() {'use strict';
     var firstMain = makeSlideElement('div', 'maincol');
     var secondMain = makeSlideElement('div', 'maincol');
     var pairedCards = makeSlideElement('div', 'pair');
+    var approvalCards = [];
+    var impactPriority = null;
     Array.prototype.slice.call(main.children).forEach(function (child) {
-      (child.matches('.verdict,.kpis') ? firstMain : secondMain).appendChild(child);
+      if (child.matches('.verdict,.kpis')) firstMain.appendChild(child);
+      else if (child.matches('.impact-priority')) impactPriority = child;
+      else secondMain.appendChild(child);
     });
     Array.prototype.slice.call(rail.children).forEach(function (child) {
-      if (!child.matches('.ai,.coo')) pairedCards.appendChild(child);
+      if (child.matches('.ai,.executive-plan')) pairedCards.appendChild(child);
+      else if (!child.matches('.coo')) approvalCards.push(child);
     });
     if (pairedCards.children.length) firstMain.appendChild(pairedCards);
+    if (impactPriority) firstMain.appendChild(impactPriority);
+    approvalCards.forEach(function (child) { firstMain.appendChild(child); });
     firstSlide.appendChild(firstMain);
     firstSlide.appendChild(rail);
     secondSlide.appendChild(secondMain);
