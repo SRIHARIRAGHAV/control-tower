@@ -1,16 +1,23 @@
 # Control Tower dashboard (interactive)
 
-Run locally:
+## Local development
 
-    pnpm install && pnpm dev
+    npm install
+    npm run dev
 
-Open http://localhost:5173. Build for a TV/kiosk: `pnpm build && pnpm preview`.
+Open http://localhost:5173. Run `npm run build` to type-check and build the
+Forge static resource into `forge-dist/`.
 
-The dashboard now uses React, TypeScript, and Vite. The existing dashboard shell,
-styles, sample data, and interactions are preserved in `src/dashboard-shell.html`,
-`src/dashboard.css`, and `src/dashboard.ts`; `src/App.tsx` mounts them.
-The Forge, Radix, Tailwind, TanStack, Zustand, Zod, and form/chart packages are
-included as the target UI stack for subsequent component and resolver integration.
+## Deploy to Jira
+
+Install and authenticate the Atlassian Forge CLI, then run:
+
+    npm run forge:lint
+    npm run forge:deploy
+
+The deployment builds the React dashboard first and packages it with the Forge
+resolvers and Jira/Confluence/Bitbucket sync handlers. `npm run forge:install`
+is for installing the app on a Jira site after the first deployment.
 
 ## Keyboard / remote
 Arrows move focus, Enter opens, Esc/Backspace closes, 1/2/3 = 12h/7d/30d, R refresh,

@@ -1410,6 +1410,93 @@ export function initDashboard() {'use strict';
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.activeElement && document.activeElement.id === 'q') document.activeElement.blur(); });
 
+  window.addEventListener('xone-source-data', function (event) {
+    var data = event.detail || {};
+    var snapshot = data.snapshot;
+    var issues = snapshot && Array.isArray(snapshot.jiraIssues) ? snapshot.jiraIssues : [];
+    var today = new Date();
+    TODAY = today;
+    var departments = {};
+    var projects = {};
+    RISKS = issues.map(function (issue) {
+      var priority = String(issue.priority || '').trim().toLowerCase();
+      var lvl = ['blocker', 'critical', 'highest', 'urgent'].indexOf(priority) >= 0 ? 'c'
+        : priority === 'high' ? 'h'
+          : ['medium', 'normal'].indexOf(priority) >= 0 ? 'm' : 'n';
+      var status = String(issue.status || '').trim().toLowerCase();
+      var open = ['done', 'closed', 'resolved', 'complete', 'completed'].indexOf(status) < 0;
+      var dept = String(issue.department || 'Unassigned').trim() || 'Unassigned';
+      var impactedDepartment = String(issue.impactedDepartment || '').trim();
+      var createdAt = issue.createdAt || '';
+      var created = createdAt ? new Date(createdAt) : null;
+      var age = created && !Number.isNaN(created.getTime())
+        ? Math.max(0, Math.floor((today.getTime() - created.getTime()) / 86400000)) : 0;
+      var dueDate = String(issue.dueDate || '').slice(0, 10);
+      var day = 0;
+      if (dueDate) {
+        var due = new Date(dueDate + 'T00:00:00');
+        if (!Number.isNaN(due.getTime())) {
+          day = Math.round((due.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000);
+          if (open && day < 0) lvl = 'c';
+          else if (open && day <= 3) lvl = lvl === 'h' ? 'c' : lvl === 'm' ? 'h' : lvl === 'n' ? 'm' : lvl;
+        }
+      }
+      if (open && status.indexOf('block') >= 0 && RANK[lvl] > RANK.h) lvl = 'h';
+      departments[dept] = true;
+      projects[issue.project || issue.key] = true;
+      return {
+        id: issue.key,
+        key: issue.key,
+        dept: dept,
+        project: issue.project || 'Jira issue',
+        lvl: lvl,
+        open: open,
+        blocked: status.indexOf('block') >= 0,
+        day: day,
+        age: age,
+        dueDate: dueDate,
+        type: impactedDepartment ? 'cross' : issue.client ? 'client' : 'internal',
+        from: impactedDepartment ? dept : '',
+        to: impactedDepartment,
+        area: issue.deliveryInitiative || issue.project || '',
+        risk: issue.summary || '',
+        cause: issue.status || '',
+        impact: issue.customerImpact || '',
+        action: issue.mitigation || '',
+        owner: issue.owner || '',
+        client: issue.client || '',
+        customerImpact: issue.customerImpact || '',
+        mitigation: issue.mitigation || '',
+        cooDecision: issue.cooDecision || '',
+        cooApprover: issue.cooApprover || '',
+        approvalDate: issue.approvalDate || '',
+        pendingApproval: Boolean((issue.cooDecision && !/^(approved|rejected|declined)$/i.test(issue.cooDecision)) || (issue.cooApprover && !issue.cooDecision))
+      };
+    });
+    var names = Object.keys(departments);
+    DEPTS = names.map(function (name) { return { name: name, short: name, lead: '', normal: 0 }; });
+    TOTAL_PROJECTS = Object.keys(projects).length;
+    POTENTIAL = RISKS.filter(function (issue) { return issue.open && issue.dueDate && issue.day >= 0 && issue.day <= 30; })
+      .map(function (issue) { return Object.assign({}, issue, { id: 'p_' + issue.id }); });
+    PENDING = RISKS.filter(function (issue) { return issue.pendingApproval; })
+      .map(function (issue) { return Object.assign({}, issue, { id: 's_' + issue.id, day: -issue.age }); });
+    PLAN = [];
+    DECISIONS = RISKS.filter(function (issue) { return issue.pendingApproval; });
+    NOTIFS = [];
+    MILESTONES = {
+      c: RISKS.filter(function (issue) { return issue.lvl === 'c'; }).length,
+      h: RISKS.filter(function (issue) { return issue.lvl === 'h'; }).length,
+      n: RISKS.filter(function (issue) { return issue.lvl === 'm' || issue.lvl === 'n'; }).length
+    };
+    S.sev = { c: true, h: true, m: true, n: true };
+    S.types = { client: true, internal: true, cross: true };
+    renderNav();
+    renderPops();
+    render();
+    renderChat();
+    fit();
+  });
+
   renderNav(); renderPops(); render(); renderChat();
   setTimeout(function () { S.bubbleGone = true; renderChat(); }, 7000);
   fit();
