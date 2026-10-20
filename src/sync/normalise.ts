@@ -2,7 +2,7 @@ import type {
   BitbucketRepositorySummary,
   ConfluencePageSummary,
   JiraIssueSummary,
-} from '../shared/types.ts';
+} from '../shared/types';
 
 export interface JiraSearchResponse {
   issues?: Array<{

@@ -1,4 +1,4 @@
-import type { BitbucketRepositorySummary, SourceResult } from '../shared/types.ts';
+import type { BitbucketRepositorySummary, SourceResult } from '../shared/types';
 import {
   mapBitbucketCommits,
   mapBitbucketRepositories,
