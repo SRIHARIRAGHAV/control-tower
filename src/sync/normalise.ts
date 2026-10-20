@@ -29,6 +29,7 @@ export interface JiraCustomFieldIds {
   client?: string;
   customerImpact?: string;
   mitigation?: string;
+  impactArea?: string;
   owner?: string;
   cooDecision?: string;
   cooApprover?: string;
@@ -144,6 +145,7 @@ export function mapJiraIssues(body: JiraSearchResponse, customFields: JiraCustom
     client: customFields.client ? normalizeText(issue.fields?.[customFields.client]) : undefined,
     customerImpact: customFields.customerImpact ? normalizeText(issue.fields?.[customFields.customerImpact]) : undefined,
     mitigation: customFields.mitigation ? normalizeText(issue.fields?.[customFields.mitigation]) : undefined,
+    impactArea: customFields.impactArea ? normalizeText(issue.fields?.[customFields.impactArea]) : undefined,
     owner: customFields.owner ? normalizeText(issue.fields?.[customFields.owner]) : undefined,
     cooDecision: customFields.cooDecision ? normalizeText(issue.fields?.[customFields.cooDecision]) : undefined,
     cooApprover: customFields.cooApprover ? normalizeText(issue.fields?.[customFields.cooApprover]) : undefined,

@@ -10,6 +10,7 @@ const CUSTOM_FIELD_NAMES: Record<keyof JiraCustomFieldIds, string> = {
   client: 'Client',
   customerImpact: 'Customer impact',
   mitigation: 'Mitigation',
+  impactArea: 'Impact area',
   owner: 'Owner',
   cooDecision: 'COO decision',
   cooApprover: 'COO approver',

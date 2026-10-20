@@ -21,10 +21,17 @@ export async function readRiskForecast(): Promise<RiskForecast | null> {
   return result?.payload ?? null;
 }
 
-export async function writeSyncResult(snapshot: XoneSnapshot, state: SyncState, forecast: RiskForecast): Promise<void> {
-  await Promise.all([
+export async function writeSyncResult(
+  snapshot: XoneSnapshot,
+  state: SyncState,
+  forecast?: RiskForecast,
+): Promise<void> {
+  const writes = [
     snapshotEntity.set('latest', { payload: snapshot, updatedAt: snapshot.syncedAt }),
-    statusEntity.set('latest', { payload: state, updatedAt: snapshot.syncedAt }),
-    forecastEntity.set('latest', { payload: forecast, updatedAt: forecast.generatedAt }),
-  ]);
+    statusEntity.set('latest', { payload: state, updatedAt: state.syncedAt ?? snapshot.syncedAt }),
+  ];
+  if (forecast) {
+    writes.push(forecastEntity.set('latest', { payload: forecast, updatedAt: forecast.generatedAt }));
+  }
+  await Promise.all(writes);
 }

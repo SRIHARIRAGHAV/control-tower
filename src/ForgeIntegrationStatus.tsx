@@ -19,6 +19,11 @@ export default function ForgeIntegrationStatus() {
   useEffect(() => {
     let active = true;
 
+    function handleSyncRequest(event: Event) {
+      event.preventDefault();
+      void refresh();
+    }
+
     async function load() {
       try {
         const result = await getDashboardData();
@@ -32,14 +37,29 @@ export default function ForgeIntegrationStatus() {
           publishDashboardData(synced);
         }
       } catch (reason) {
-        if (active) setError(errorMessage(reason, 'Could not load Jira data.'));
+        if (active) {
+          const message = errorMessage(reason, 'Could not load Jira data.');
+          setError(message);
+          publishDashboardData({
+            snapshot: null,
+            state: {
+              jira: { state: 'error', count: 0, message },
+              confluence: { state: 'not-synced', count: 0, message: 'Source status is unavailable.' },
+              bitbucket: { state: 'not-synced', count: 0, message: 'Source status is unavailable.' },
+            },
+          });
+        }
       } finally {
         if (active) setLoading(false);
       }
     }
 
+    window.addEventListener('xone-sync-request', handleSyncRequest);
     void load();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      window.removeEventListener('xone-sync-request', handleSyncRequest);
+    };
   }, []);
 
   async function refresh() {
@@ -56,12 +76,25 @@ export default function ForgeIntegrationStatus() {
     }
   }
 
-  const jiraIssueCount = data?.snapshot?.jiraIssues.length;
+  const jiraStatus = data?.state.jira;
+  const jiraIssueCount = data?.snapshot?.jiraIssues.length ?? 0;
+  const syncError = error || (jiraStatus?.state === 'error' ? jiraStatus.message : '');
+  const statusText = loading
+    ? 'Loading Jira data…'
+    : error
+      ? 'Jira data unavailable'
+      : jiraStatus?.state === 'error'
+        ? `Jira sync failed · showing ${jiraIssueCount} cached issues`
+        : jiraStatus?.state === 'not-configured'
+          ? 'Jira is not configured'
+          : jiraStatus?.state === 'not-synced'
+            ? 'Jira has not synced'
+            : `${jiraIssueCount} Jira issues`;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
       <span role="status" aria-live="polite">
-        {loading ? 'Loading Jira data…' : error ? 'Jira data unavailable' : `${jiraIssueCount ?? 0} Jira issues`}
+        {statusText}
       </span>
       <button
         type="button"
@@ -71,7 +104,11 @@ export default function ForgeIntegrationStatus() {
       >
         {syncing ? 'Syncing…' : 'Sync'}
       </button>
-      {error && <span role="alert" style={{ color: '#b42318' }}>{error}</span>}
+      {syncError && (
+        <span role="alert" title={syncError} style={{ color: '#b42318', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {syncError}
+        </span>
+      )}
     </div>
   );
 }

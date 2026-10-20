@@ -51,6 +51,28 @@ export function initDashboard() {'use strict';
     ['People & capacity', 'Staffing and workload'],
     ['Data & reporting', 'Numbers leaders rely on']
   ];
+  var UNCLASSIFIED_AREA = 'Not categorized';
+  function impactArea(value, initiative) {
+    var explicit = String(value || '').trim();
+    var candidate = explicit || String(initiative || '').trim();
+    if (!candidate) return UNCLASSIFIED_AREA;
+    var known = AREAS.filter(function (area) { return area[0].toLowerCase() === candidate.toLowerCase(); })[0];
+    return known ? known[0] : explicit || UNCLASSIFIED_AREA;
+  }
+  function impactAreas(risks) {
+    var known = {};
+    var extra = {};
+    AREAS.forEach(function (area) { known[area[0]] = true; });
+    risks.forEach(function (risk) {
+      if (risk.area && risk.area !== UNCLASSIFIED_AREA && !known[risk.area]) extra[risk.area] = true;
+    });
+    var areas = AREAS.slice();
+    Object.keys(extra).sort().forEach(function (area) { areas.push([area, 'Jira impact area']); });
+    if (risks.some(function (risk) { return !risk.area || risk.area === UNCLASSIFIED_AREA; })) {
+      areas.push([UNCLASSIFIED_AREA, 'Set the Impact area field in Jira']);
+    }
+    return areas;
+  }
 
   // Current risks. day = days from today until it bites; open = still needs an executive action
   var RISKS = [
@@ -118,7 +140,7 @@ export function initDashboard() {'use strict';
 
   var NAV = [
     { k: 'dash', label: 'Dashboard', icon: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>', sub: [['Overview', '#top'], ['Impact', '#sec-impact'], ['Departments', '#sec-depts'], ['Timeline', '#sec-timeline']] },
-    { k: 'rep', label: 'Reports', icon: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>', sub: [['Weekly brief', '#'], ['Board pack', '#']] },
+    { k: 'rep', label: 'Reports', icon: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>', sub: [['Weekly brief', '#'], ['Board pack', '#'], ['Executive report', '#']] },
     { k: 'fin', label: 'Finance', icon: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>', sub: [['Budget', '#'], ['Spend', '#']] },
     { k: 'rm', label: 'RM', icon: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="M12 9v4M12 16v.01"/>', sub: [['Risk register', '#'], ['Mitigations', '#']] },
     { k: 'ana', label: 'Analytics', icon: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>' },
@@ -181,6 +203,7 @@ export function initDashboard() {'use strict';
   // up = worse for risks; for health a fall is worse
   function delta(val, label, worseWhenUp) {
     var n = typeof val === 'number' ? val : parseFloat(val);
+    if (Number.isNaN(n)) return '<span class="delta flat">— ' + esc(label) + '</span>';
     var cls = n === 0 ? 'flat' : ((n > 0) === worseWhenUp ? 'bad' : 'good');
     var arrow = n > 0 ? '↗' : n < 0 ? '↘' : '→';
     var txt = typeof val === 'number' ? (val > 0 ? '+' : '') + val : val;
@@ -192,7 +215,10 @@ export function initDashboard() {'use strict';
     RISKS.forEach(function (r) { if (r.lvl === 'c' || r.blocked) seen[r.project] = true; });
     return Object.keys(seen);
   }
-  function healthScore() { var t = MILESTONES.c + MILESTONES.h + MILESTONES.n; return Math.round((MILESTONES.n + MILESTONES.h * 0.5) / t * 100); }
+  function healthScore() {
+    var total = MILESTONES.c + MILESTONES.h + MILESTONES.n;
+    return total ? Math.round((MILESTONES.n + MILESTONES.h * 0.5) / total * 100) : null;
+  }
 
   // ---- charts ----
   function donut(parts, center, sub, size) {
@@ -214,7 +240,7 @@ export function initDashboard() {'use strict';
   // =====================================================================
   function renderNav() {
     var h = '';
-    var pageNav = { weekly: 'rep', board: 'rep', budget: 'fin', spend: 'fin', register: 'rm', mitig: 'rm' };
+    var pageNav = { weekly: 'rep', board: 'rep', report: 'rep', budget: 'fin', spend: 'fin', register: 'rm', mitig: 'rm' };
     var currentNav = S.page ? pageNav[S.page] || S.page : 'dash';
     NAV.forEach(function (n) {
       var on = n.k === currentNav;
@@ -222,15 +248,11 @@ export function initDashboard() {'use strict';
         '<svg class="i" viewBox="0 0 24 24">' + n.icon + '</svg><span class="lbl">' + n.label + '</span>' +
         (n.sub ? '<svg class="i chev" viewBox="0 0 24 24" style="width:16px"><path d="m6 9 6 6 6-6"/></svg>' : '') + '</button>';
       if (n.sub && S.nav[n.k]) h += '<div class="sub">' + n.sub.map(function (x, i) {
-        var subPages = { 'Weekly brief': 'weekly', 'Board pack': 'board', 'Budget': 'budget', 'Spend': 'spend', 'Risk register': 'register', 'Mitigations': 'mitig' };
+        var subPages = { 'Weekly brief': 'weekly', 'Board pack': 'board', 'Executive report': 'report', 'Budget': 'budget', 'Spend': 'spend', 'Risk register': 'register', 'Mitigations': 'mitig' };
         return '<a href="' + x[1] + '"' + (S.page === subPages[x[0]] ? ' class="on"' : '') + '>' + x[0] + '</a>';
       }).join('') + '</div>';
     });
     document.getElementById('menu').innerHTML = h;
-    var help = document.querySelector('[data-stub="Help center"]');
-    var settings = document.querySelector('[data-stub="Settings"]');
-    if (help) help.classList.toggle('on', S.page === 'help');
-    if (settings) settings.classList.toggle('on', S.page === 'settings');
   }
 
   // =====================================================================
@@ -261,7 +283,7 @@ export function initDashboard() {'use strict';
     function topDept(list) {
       var c = {}; list.forEach(function (r) { c[r.dept] = (c[r.dept] || 0) + 1; });
       var k = Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0];
-      return { name: k, n: c[k] };
+      return k ? { name: k, n: c[k] } : { name: 'Unassigned', n: 0 };
     }
     function first(list) { return list.slice().sort(function (a, b) { return a.day - b.day || RANK[a.lvl] - RANK[b.lvl]; })[0]; }
 
@@ -281,25 +303,36 @@ export function initDashboard() {'use strict';
     // ---- row 1: five KPI cards — health, delivery, now, stuck, next ----
     h += '<section class="kpis" id="top" aria-label="Key numbers">';
 
-    var hl = score >= HEALTH_TARGET ? 'n' : score >= 70 ? 'm' : 'h';
+    var healthAvailable = score !== null;
+    var hl = !healthAvailable ? 'n' : score >= HEALTH_TARGET ? 'n' : score >= 70 ? 'm' : 'h';
     var drag = topDept(RISKS.filter(function (r) { return r.lvl === 'c'; }));
-    h += '<div class="card kpi healthk k-' + hl + '"><div class="ch"><h3>Overall health</h3>' + statusPill(hl) + '</div>' +
-      '<p class="def">Milestones on plan · target ' + HEALTH_TARGET + '</p><div class="health">' +
-      donut([['Critical', MILESTONES.c, FILL.c], ['High risk', MILESTONES.h, FILL.h], ['Normal', MILESTONES.n, FILL.n]], score, 'of 100') +
+    h += '<div class="card kpi healthk k-' + hl + '"><div class="ch"><h3>Overall health</h3>' +
+      (healthAvailable ? statusPill(hl) : '<span class="pill n">No data</span>') + '</div>' +
+      '<p class="def">Jira issue severity · target ' + HEALTH_TARGET + '</p><div class="health">' +
+      donut([['Critical', MILESTONES.c, FILL.c], ['High risk', MILESTONES.h, FILL.h], ['Normal', MILESTONES.n, FILL.n]], healthAvailable ? score : '—', 'of 100') +
       '<div class="legend">' + [['c', MILESTONES.c], ['h', MILESTONES.h], ['n', MILESTONES.n]].map(function (x) {
         return '<div><i style="background:' + FILL[x[0]] + '"></i><b>' + x[1] + '</b><span>' + LEVEL[x[0]] + '</span></div>';
       }).join('') + '</div></div>' +
-      talkIfIgnored(leadOf(drag.name).lead, leadOf(drag.name).short, 'health falls to ≈ ' + (score + V.health[0]) + ' next month') +
+      talkIfIgnored(
+        healthAvailable ? leadOf(drag.name).lead : 'No owner assigned',
+        healthAvailable ? leadOf(drag.name).short : '',
+        healthAvailable ? 'Health falls to ≈ ' + (score + V.health[0]) + ' next month' : 'Health cannot be calculated without Jira issue data'
+      ) +
       '<div class="foot">' + delta(V.health[0], V.health[1], false) + '</div></div>';
 
     var offRisks = off.map(function (n) { return RISKS.filter(function (r) { return r.project === n && (r.lvl === 'c' || r.blocked); }).sort(bySev)[0]; });
-    var offTop = topDept(offRisks), offNext = first(offRisks), offPct = Math.round(off.length / TOTAL_PROJECTS * 100);
+    var offTop = topDept(offRisks), offNext = first(offRisks);
+    var offPct = TOTAL_PROJECTS ? Math.round(off.length / TOTAL_PROJECTS * 100) : null;
     var ol = offPct >= 20 ? 'c' : offPct >= 10 ? 'h' : 'n';
     h += '<button class="card click kpi k-' + ol + '" data-open="offtrack"><div class="ch"><h3>Projects off track</h3>' + statusPill(ol) + '</div>' +
       '<p class="def">Projects with a critical issue or blocker</p>' +
       '<div class="offtrack">' + donut([['Off track', off.length, FILL.c], ['On track', TOTAL_PROJECTS - off.length, 'var(--grid)']], off.length, 'of ' + TOTAL_PROJECTS) +
-      '<span class="cap">' + offPct + '% of all projects</span></div>' +
-      talkIfIgnored(leadOf(offTop.name).lead, offTop.n + ' of ' + off.length + ' in ' + leadOf(offTop.name).short, esc(offNext.project) + ' slips ' + short(offNext.day)) +
+      '<span class="cap">' + (offPct === null ? '—' : offPct + '%') + ' of all projects</span></div>' +
+      talkIfIgnored(
+        offNext ? leadOf(offTop.name).lead : 'No owner assigned',
+        offNext ? offTop.n + ' of ' + off.length + ' in ' + leadOf(offTop.name).short : '',
+        offNext ? esc(offNext.project) + ' slips ' + short(offNext.day) : 'No projects are currently flagged off track'
+      ) +
       '<div class="foot">' + delta(V.off[0], V.off[1], true) + '</div></button>';
 
     var critNext = first(critOpen), prog = count(RISKS, 'c') - critOpen.length;
@@ -310,7 +343,11 @@ export function initDashboard() {'use strict';
         '<span style="flex:' + critOpen.length + ';background:var(--crit)" data-tip="' + critOpen.length + ' need action"></span>' +
         (prog ? '<span class="prog" style="flex:' + prog + '" data-tip="' + prog + ' already being fixed"></span>' : '') + '</div>' +
         '<div class="vkey"><span><i style="background:var(--crit)"></i>' + critOpen.length + ' need action</span>' + (prog ? '<span><i class="prog"></i>' + prog + ' being fixed</span>' : '') + '</div></div>' +
-      talkIfIgnored(critNext.owner, critNext.project, '≈ ₹' + stake + ' L lost this week') +
+      talkIfIgnored(
+        critNext ? critNext.owner : 'No owner assigned',
+        critNext ? critNext.project : '',
+        critNext ? '≈ ₹' + stake + ' L lost this week' : 'No critical risks are currently recorded'
+      ) +
       '<div class="foot">' + delta(V.crit[0], V.crit[1], true) + '</div></button>';
 
     var oldest = stuck.slice().sort(function (a, b) { return b.age - a.age; })[0];
@@ -334,7 +371,11 @@ export function initDashboard() {'use strict';
       '<div class="kviz"><div class="strip" role="img" aria-label="When the potential risks are expected over the next 30 days"><span class="now"></span>' +
         POTENTIAL.map(function (p) { return '<span class="pt" style="left:' + (p.day / 30 * 100) + '%;background:' + FILL[p.lvl] + '" data-tip="' + esc(p.project + ': ' + p.risk + ' · ' + fmt(p.day)) + '"></span>'; }).join('') +
       '</div><div class="strip-lbl"><span>Today</span><span>2 wk</span><span>30 d</span></div></div>' +
-      talkIfIgnored(potNext.owner, potNext.project + ', ' + short(potNext.day), esc(potNext.impact)) +
+      talkIfIgnored(
+        potNext ? potNext.owner : 'No owner assigned',
+        potNext ? potNext.project + ', ' + short(potNext.day) : '',
+        potNext ? esc(potNext.impact) : 'No upcoming risks are currently recorded'
+      ) +
       '<div class="foot">' + delta(V.pot[0], V.pot[1], true) + '</div></button>';
     h += '</section>';
 
@@ -383,23 +424,28 @@ export function initDashboard() {'use strict';
 
     // ---- right rail ----
     h += '<aside class="rail" aria-label="Summary and actions">';
-    h += '<section class="card ai"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span class="spark">✦</span>AI summary &amp; insights</h3></div><ul class="brief">' +
-      '<li><span class="tag t-c">Now</span><span><b>' + critOpen.length + ' critical</b>, ≈ ₹' + stake + ' L at stake; Payments release is the largest.</span></li>' +
-      '<li><span class="tag t-h">Stuck</span><span><b>ML hire</b> waiting ' + maxAge + ' days; ML lead leaves 30 Oct.</span></li>' +
-      '<li><span class="tag t-m">Next</span><span><b>Festive traffic</b> on 21 Oct; GPU quota ends in 15 days.</span></li>' +
+    h += '<section class="card ai"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span class="spark">✦</span>AI insights</h3><span class="insight-mode">Current risk data</span></div><ul class="brief">' +
       (function () {
-        var all = RISKS.concat(POTENTIAL), byClient = {}, byFrom = {};
+        var all = RISKS.concat(POTENTIAL), active = RISKS.filter(function (r) { return r.open; }).slice().sort(bySev);
+        var oldest = RISKS.filter(function (r) { return r.open && r.age > 0; }).sort(function (a, b) { return b.age - a.age; })[0];
+        var upcoming = POTENTIAL.slice().sort(function (a, b) { return a.day - b.day; })[0];
+        var byClient = {}, byFrom = {};
         all.forEach(function (r) {
-          if (r.client) { var c = byClient[r.client] = byClient[r.client] || { n: 0, stake: 0 }; c.n++; c.stake += r.stake || 0; }
-          if (r.type === 'cross') byFrom[r.from] = (byFrom[r.from] || 0) + 1;
+          if (r.client) { var c = byClient[r.client] = byClient[r.client] || { n: 0, critical: 0 }; c.n++; if (r.lvl === 'c') c.critical++; }
+          if (r.type === 'cross' && r.from) byFrom[r.from] = (byFrom[r.from] || 0) + 1;
         });
-        var topC = Object.keys(byClient).sort(function (a, b) { return byClient[b].stake - byClient[a].stake || byClient[b].n - byClient[a].n; })[0];
-        var topF = Object.keys(byFrom).sort(function (a, b) { return byFrom[b] - byFrom[a]; })[0];
-        var nCross = all.filter(function (r) { return r.type === 'cross'; }).length;
-        return (topC ? '<li><span class="tag t-n">Client</span><span><b>' + esc(topC) + '</b> is most exposed: ' + byClient[topC].n + ' problems, ≈ ₹' + byClient[topC].stake + ' L.</span></li>' : '') +
-          (topF ? '<li><span class="tag t-n">Teams</span><span><b>' + esc(deptShort(topF)) + '</b> is holding up other teams in ' + byFrom[topF] + ' of ' + nCross + ' handoff problems.</span></li>' : '');
+        var topClient = Object.keys(byClient).sort(function (a, b) { return byClient[b].critical - byClient[a].critical || byClient[b].n - byClient[a].n; })[0];
+        var topTeam = Object.keys(byFrom).sort(function (a, b) { return byFrom[b] - byFrom[a]; })[0];
+        var lines = [];
+        if (active.length) lines.push('<li><span class="tag t-c">Now</span><span><b>' + critOpen.length + ' critical open risks</b>' +
+          (active[0] ? '; highest priority: ' + esc(active[0].project) + ' — ' + esc(active[0].risk || active[0].action || 'review required') : '') + '.</span></li>');
+        if (oldest) lines.push('<li><span class="tag t-h">Aging</span><span><b>' + esc(oldest.project) + '</b> is open for ' + oldest.age + ' days in ' + esc(oldest.dept) + '.</span></li>');
+        if (upcoming) lines.push('<li><span class="tag t-m">Next</span><span><b>' + esc(upcoming.project) + '</b> is the nearest expected risk' + (upcoming.day >= 0 ? ' in ' + upcoming.day + ' days' : '') + (upcoming.risk ? ': ' + esc(upcoming.risk) : '') + '.</span></li>');
+        if (topClient) lines.push('<li><span class="tag t-n">Client</span><span><b>' + esc(topClient) + '</b> has the most recorded exposure: ' + byClient[topClient].n + ' risks, ' + byClient[topClient].critical + ' critical.</span></li>');
+        if (topTeam) lines.push('<li><span class="tag t-n">Teams</span><span><b>' + esc(deptShort(topTeam)) + '</b> appears most often as a dependency source (' + byFrom[topTeam] + ' cross-department risks).</span></li>');
+        return lines.length ? lines.join('') : '<li><span class="tag t-n">Clear</span><span>No risk records are available for analysis. Sync connected sources to refresh the dashboard.</span></li>';
       })() +
-      '<li><span class="tag t-n">Cause</span><span>Fraud model drift began when the new payment partner went live.</span></li></ul></section>';
+      '</ul><small class="insight-disclaimer">Evidence-based summary of current dashboard data. Live generative AI will be enabled after server API configuration.</small></section>';
 
     h += '<section class="card"><div class="ch"><h3>Recommended executive plan</h3></div><p class="def" style="margin-top:-4px">Three moves that remove the most risk</p><div>' +
       PLAN.map(function (a, i) {
@@ -438,19 +484,22 @@ export function initDashboard() {'use strict';
   function impactSection() {
     var P = problems(), types = ['client', 'internal', 'cross'];
     var all = RISKS.concat(POTENTIAL);
+    var areas = impactAreas(all);
+    var uncategorized = P.filter(function (risk) { return risk.area === UNCLASSIFIED_AREA; }).length;
     var h = '<div class="sect" id="sec-impact"><h2>Impact on the organisation</h2><span class="typekey">' +
       types.map(function (t) { return '<span data-tip="' + esc(TYPE_HINT[t]) + '">' + tyChip(t, TYPE[t]) + '</span>'; }).join('') + '</span></div>' +
       '<section class="imp" aria-label="Impact on the organisation">';
 
     // ---- 1. impact map ----
     h += '<div class="card mx"><div class="ch"><h3>What the problems hit</h3><span class="muted" style="font-size:12px">' + P.length + ' problems</span></div>' +
-      '<p class="def">Current and expected problems · colour = most serious · click any number</p>' +
+      '<p class="def">Current and expected problems · colour = most serious · click any number' +
+      (uncategorized ? ' · ' + uncategorized + ' not categorized; add an Impact area in Jira' : '') + '</p>' +
       '<table class="mxt"><thead><tr><th scope="col"><span class="sr" style="position:absolute;left:-9999px">Area</span></th>' +
       types.map(function (t) {
         var n = P.filter(function (r) { return r.type === t; }).length;
         return '<th scope="col"><button data-type="' + t + '" data-tip="' + esc(TYPE_HINT[t]) + '">' + tyChip(t) + '<b>' + n + '</b></button></th>';
       }).join('') + '</tr></thead><tbody>';
-    AREAS.forEach(function (a) {
+    areas.forEach(function (a) {
       h += '<tr><th scope="row" class="rl">' + esc(a[0]) + '<small>' + esc(a[1]) + '</small></th>';
       types.forEach(function (t) {
         var list = P.filter(function (r) { return r.area === a[0] && r.type === t; });
@@ -569,7 +618,7 @@ export function initDashboard() {'use strict';
   // POPOVERS
   // =====================================================================
   function renderPops() {
-    ['filter', 'notif', 'cal', 'view'].forEach(function (k) {
+    ['filter', 'notif', 'cal', 'view', 'profile'].forEach(function (k) {
       var el = document.getElementById('pop-' + k);
       if (S.pop !== k) { el.hidden = true; el.innerHTML = ''; return; }
       el.hidden = false;
@@ -601,6 +650,10 @@ export function initDashboard() {'use strict';
         h = '<h4>Compare against</h4>' + Object.keys(VIEWS).map(function (v) {
           return '<button class="opt' + (S.view === v ? ' on' : '') + '" data-view="' + v + '">Last ' + VIEWS[v].label + '<span>' + (S.view === v ? '✓' : '') + '</span></button>';
         }).join('');
+      } else if (k === 'profile') {
+        h = '<div class="profile-menu-user"><span class="avatar">V</span><div><b>Vishva</b><small>Jira dashboard user</small></div></div>' +
+          '<button class="opt" data-page="settings"><span>Settings</span><span aria-hidden="true">⚙</span></button>' +
+          '<button class="opt" data-page="help"><span>Help center</span><span aria-hidden="true">?</span></button>';
       }
       el.innerHTML = h;
     });
@@ -608,6 +661,8 @@ export function initDashboard() {'use strict';
       ['client', 'internal', 'cross'].filter(function (t) { return !S.types[t]; }).length;
     var fb = document.getElementById('fbadge'); fb.hidden = !off; fb.textContent = off ? off + ' off' : '';
     document.getElementById('viewlbl').textContent = VIEWS[S.view].label;
+    var profileButton = document.querySelector('[data-pop="profile"]');
+    if (profileButton) profileButton.setAttribute('aria-expanded', String(S.pop === 'profile'));
   }
 
   // =====================================================================
@@ -674,7 +729,10 @@ export function initDashboard() {'use strict';
   // =====================================================================
   var PROMPTS = [
     ['Explain overall health', function () {
-      return 'Health is ' + healthScore() + '/100. Of 52 milestones, 15 are critical, 6 are high risk and 31 are normal.\n\nBiggest drivers:\n• Payments Release 3.2 stuck in review\n• Fraud model accuracy drop\n• Customer 360 pipeline failures';
+      var score = healthScore();
+      if (score === null) return 'Insufficient data: Jira issue data is unavailable, so overall health cannot be calculated.';
+      return 'Current issue health is ' + score + '/100 across ' + RISKS.length + ' Jira issues: ' +
+        MILESTONES.c + ' critical, ' + MILESTONES.h + ' high risk and ' + MILESTONES.n + ' moderate or normal.';
     }],
     ['Summarize critical risks', function () {
       return RISKS.filter(function (r) { return r.lvl === 'c'; }).sort(bySev).map(function (r) { return '• ' + r.project + (r.open ? ' (needs action)' : ' (in progress)') + ': ' + r.risk; }).join('\n');
@@ -697,7 +755,12 @@ export function initDashboard() {'use strict';
       }).join('\n');
     }],
     ['Draft a board update', function () {
-      return 'Draft:\n"Overall health is ' + healthScore() + '/100 and 7 of 25 projects are off track. Four critical risks need action and each has a named owner; the largest is the Payments 3.2 release. We expect six further risks in the next 30 days and are preparing mitigations."';
+      var score = healthScore();
+      if (score === null) return 'Insufficient data: a board update cannot be generated until Jira issue data is available.';
+      var critical = criticalOpen().slice().sort(bySev);
+      return 'Draft:\n"Current issue health is ' + score + '/100. ' + critical.length + ' critical risks need action across ' +
+        TOTAL_PROJECTS + ' Jira projects, with ' + POTENTIAL.length + ' dated risks expected in the next 30 days.' +
+        (critical.length ? ' Highest-priority item: ' + critical[0].project + ' — ' + critical[0].risk + '.' : '');
     }]
   ];
   function renderChat() {
@@ -1300,7 +1363,7 @@ export function initDashboard() {'use strict';
   //   Menu pages, Help, Settings, notifications, calendar days, auto-refresh, TV keyboard control.
   // =====================================================================
   S.seen = false; S.auto = false; S.every = 30; S.lastTs = null; var autoTimer;
-  var SUBMAP = { 'Weekly brief': 'weekly', 'Board pack': 'board', 'Budget': 'budget', 'Spend': 'spend', 'Risk register': 'register', 'Mitigations': 'mitig' };
+  var SUBMAP = { 'Weekly brief': 'weekly', 'Board pack': 'board', 'Executive report': 'report', 'Budget': 'budget', 'Spend': 'spend', 'Risk register': 'register', 'Mitigations': 'mitig' };
   var ALL = function () { return RISKS.concat(POTENTIAL); };
   function stakeBy(key) {
     var m = {}; ALL().forEach(function (r) { var k = r[key]; if (k && r.stake) m[k] = (m[k] || 0) + r.stake; });
@@ -1314,8 +1377,51 @@ export function initDashboard() {'use strict';
   function textBox(t) { return '<div class="proj full-copy"><div>' + esc(t) + '</div><button class="btn" data-copy="' + esc(t).replace(/\n/g, '&#10;') + '">Copy to clipboard</button></div>'; }
   function infoPage(k) {
     var R = ALL().slice().sort(bySev), h = '', title, sub;
-    if (k === 'weekly') { title = 'Weekly brief'; sub = 'Health ' + healthScore() + '/100 · ' + criticalOpen().length + ' critical need action'; h = textBox(PROMPTS[0][1]() + '\n\nCritical:\n' + PROMPTS[1][1]()); }
+    if (k === 'weekly') {
+      title = 'Weekly brief';
+      var score = healthScore();
+      sub = (score === null ? 'Health unavailable' : 'Health ' + score + '/100') + ' · ' + criticalOpen().length + ' critical need action';
+      h = textBox(PROMPTS[0][1]() + '\n\nCritical:\n' + PROMPTS[1][1]());
+    }
     else if (k === 'board') { title = 'Board pack'; sub = 'Ready-to-send update'; h = textBox(PROMPTS[5][1]()); }
+    else if (k === 'report') {
+      title = 'Executive report';
+      sub = 'Risk summary from the currently loaded dashboard data · generated ' + new Date().toLocaleString();
+      var severityCounts = { c: 0, h: 0, m: 0, n: 0 };
+      R.forEach(function (risk) { severityCounts[risk.lvl] = (severityCounts[risk.lvl] || 0) + 1; });
+      var overdue = RISKS.filter(function (risk) { return risk.open && risk.age > STUCK_DAYS; }).length;
+      var areaRows = impactAreas(RISKS.concat(POTENTIAL)).map(function (area) {
+        var cells = ['client', 'internal', 'cross'].map(function (type) {
+          var items = R.filter(function (risk) { return risk.area === area[0] && risk.type === type; });
+          return '<td><span class="report-count ' + (items.length ? 'sev-' + worst(items) : 'sev-zero') + '">' + items.length + '</span></td>';
+        }).join('');
+        return '<tr><th scope="row">' + esc(area[0]) + '<small>' + esc(area[1]) + '</small></th>' + cells + '</tr>';
+      }).join('');
+      var departmentRows = DEPTS.map(function (dept) {
+        var items = R.filter(function (risk) { return risk.dept === dept.name; });
+        var critical = items.filter(function (risk) { return risk.lvl === 'c' && risk.open; }).length;
+        return '<tr><th scope="row">' + esc(dept.name) + '</th><td>' + items.length + '</td><td>' + critical + '</td><td>' +
+          PENDING.filter(function (risk) { return risk.dept === dept.name; }).length + '</td></tr>';
+      }).join('');
+      var riskRows = R.slice(0, 10).map(function (risk) {
+        return '<tr><td><span class="report-count sev-' + risk.lvl + '">' + esc(LEVEL[risk.lvl]) + '</span></td><th scope="row">' +
+          esc(risk.project) + '<small>' + esc(risk.risk) + '</small></th><td>' + esc(risk.dept) + '</td><td>' +
+          esc(risk.owner || 'Unassigned') + '</td><td>' + esc(risk.action || 'Review mitigation') + '</td></tr>';
+      }).join('');
+      h = '<div class="report-actions"><button class="btn" type="button" data-print-report>Download PDF</button><span>Choose “Save as PDF” in the print dialog.</span></div>' +
+        '<section class="report-stats" aria-label="Executive summary">' +
+          '<div class="report-stat sev-c"><small>Critical risks needing action</small><b>' + criticalOpen().length + '</b></div>' +
+          '<div class="report-stat sev-h"><small>High risks</small><b>' + severityCounts.h + '</b></div>' +
+          '<div class="report-stat sev-m"><small>Open too long</small><b>' + overdue + '</b></div>' +
+          '<div class="report-stat sev-n"><small>Expected in 30 days</small><b>' + POTENTIAL.length + '</b></div>' +
+        '</section>' +
+        '<section class="report-section"><h2>Impact by business area</h2><p>Counts include current and expected risks. Cell color indicates the most serious risk in each group.</p>' +
+          '<div class="report-table-wrap"><table class="report-table"><thead><tr><th>Business area</th><th>Client-facing</th><th>Internal</th><th>Cross-department</th></tr></thead><tbody>' + areaRows + '</tbody></table></div></section>' +
+        '<section class="report-section"><h2>Department summary</h2><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Department</th><th>Risks</th><th>Critical open</th><th>Pending approvals</th></tr></thead><tbody>' + departmentRows + '</tbody></table></div></section>' +
+        '<section class="report-section"><h2>Priority risks and mitigations</h2><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Severity</th><th>Risk</th><th>Department</th><th>Owner</th><th>Recommended action</th></tr></thead><tbody>' +
+          (riskRows || '<tr><td colspan="5">No risks are available in this snapshot.</td></tr>') + '</tbody></table></div></section>' +
+        '<p class="report-disclaimer">This report reflects the data currently available in the dashboard. Validate owners, dates, and mitigations with the relevant teams before distribution.</p>';
+    }
     else if (k === 'budget') { title = 'Budget at stake'; sub = 'By client · ₹ lakh'; h = stakeBy('client').map(function (x) { return irow(x[0], '', '≈ ₹' + x[1] + ' L at stake'); }).join('') || '<div class="okbox">No amounts at stake.</div>'; }
     else if (k === 'spend') { title = 'Spend exposure'; sub = 'By department · ₹ lakh'; h = stakeBy('dept').map(function (x) { return irow(x[0], '', '≈ ₹' + x[1] + ' L at stake'); }).join('') || '<div class="okbox">No amounts at stake.</div>'; }
     else if (k === 'register') { title = 'Risk register'; sub = R.length + ' risks · most serious first'; h = R.map(function (r) { return irow(r.project, r.lvl, r.risk, r.dept + ' · ' + (r.owner || '')); }).join(''); }
@@ -1329,14 +1435,26 @@ export function initDashboard() {'use strict';
       h = DEPTS.map(function (d) { var l = ALL().filter(function (r) { return r.dept === d.name; }); return irow(d.name, worst(l), l.length + ' risks · ' + PENDING.filter(function (p) { return p.dept === d.name; }).length + ' pending too long', 'Lead: ' + d.lead); }).join('');
     }
     else if (k === 'help') {
-      title = 'Help center'; sub = 'Keyboard and remote control';
-      h = [['← ↑ → ↓', 'Move between cards and buttons'], ['Enter / OK', 'Open the selected card'], ['Esc / Back', 'Close drawer, menu or chat'], ['1 · 2 · 3', 'View: 12 hours · 7 days · 30 days'], ['R', 'Refresh now'], ['A', 'Auto-refresh on/off'], ['F · N · C', 'Filter · Notifications · Calendar'], ['/', 'Search'], ['M', 'Collapse or expand the sidebar'], ['?', 'Open this help']].map(function (x) { return irow(x[0], '', x[1]); }).join('');
+      title = 'Help center'; sub = 'Dashboard guide, keyboard shortcuts, and data support';
+      h = '<section class="help-section"><h2>Using the dashboard</h2><div class="help-grid">' +
+        irow('Dashboard', '', 'Use Overview, Impact, Departments, and Timeline to navigate dashboard sections. Click a risk or highlighted impact count to see related records.') +
+        irow('Full-page views', '', 'Reports, Finance, Risk Management, Analytics, and Performance open as full pages. Return using Back to dashboard or select Dashboard in navigation.') +
+        irow('Executive report', '', 'Open Reports → Executive report and choose Download PDF. In the browser print dialog, select Save as PDF.') +
+        irow('Severity colors', '', 'Red = critical, orange = high, amber = moderate, and green = normal/on track. Impact cells show the most serious risk in that group.') +
+        '</div></section><section class="help-section"><h2>Keyboard shortcuts</h2><div class="help-grid">' +
+        [['← ↑ → ↓', 'Move focus between controls'], ['Enter / Space', 'Activate the focused control'], ['Esc / Backspace', 'Close overlays or return from a full page'], ['1 · 2 · 3', 'Select 12-hour, 7-day, or 30-day view'], ['R', 'Refresh dashboard data'], ['A', 'Toggle auto-refresh'], ['F · N · C', 'Open filters, notifications, or calendar'], ['/', 'Focus search'], ['M', 'Collapse or expand navigation'], ['?', 'Open this Help Center']].map(function (x) { return irow(x[0], '', x[1]); }).join('') +
+        '</div></section><section class="help-section"><h2>Data and support</h2><p>Dashboard data comes from configured Jira and other connected sources. Use Sync in the top bar to refresh. If a source is unavailable, ask your Jira site administrator to check app access and integration configuration.</p><p>For data-access issues, contact your Jira site administrator and include the affected project, approximate time, and any error shown in the dashboard.</p></section>';
     }
     else if (k === 'settings') {
-      title = 'Settings'; sub = 'Display and refresh';
-      h = '<div class="proj settings-group"><b>Auto-refresh</b><div class="settings-actions"><button class="btn2" data-auto="toggle">' + (S.auto ? 'On · turn off' : 'Off · turn on') + '</button>' +
-        [15, 30, 60].map(function (s) { return '<button class="btn2" data-every="' + s + '"' + (S.every === s ? ' style="border-color:var(--accent);font-weight:700"' : '') + '>' + s + ' s</button>'; }).join('') + '</div></div>' +
-        '<div class="proj settings-group"><b>Display</b><div class="settings-actions"><button class="btn2" data-act="collapse">Collapse sidebar</button><button class="btn2" data-sev="all">Reset filters</button><button class="btn2" data-refresh>Refresh now</button></div></div>';
+      title = 'Settings'; sub = 'Dashboard preferences and connected-service controls';
+      h = '<section class="settings-section"><h2>Refresh and data</h2><div class="settings-grid">' +
+        '<div class="proj settings-group"><b>Automatic refresh</b><p>Refresh dashboard data while this page is open.</p><div class="settings-actions"><button class="btn2" data-auto="toggle">' + (S.auto ? 'Turn auto-refresh off' : 'Turn auto-refresh on') + '</button>' +
+        [15, 30, 60].map(function (s) { return '<button class="btn2' + (S.every === s ? ' selected' : '') + '" data-every="' + s + '"' + (S.every === s ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' + s + ' seconds</button>'; }).join('') + '</div></div>' +
+        '<div class="proj settings-group"><b>Connected sources</b><p>Manage Jira permissions and connected integrations in Atlassian app settings. Use Sync in the top bar to fetch the latest available data.</p><button class="btn2" data-refresh>Sync data now</button></div>' +
+        '</div></section><section class="settings-section"><h2>Dashboard display</h2><div class="settings-grid">' +
+        '<div class="proj settings-group"><b>Risk filters</b><p>Restore all severity and problem-type filters.</p><button class="btn2" data-sev="all">Reset filters</button></div>' +
+        '<div class="proj settings-group"><b>Navigation</b><p>Choose a compact or expanded sidebar to suit your screen.</p><button class="btn2" data-act="collapse">Toggle sidebar width</button></div>' +
+        '</div></section><section class="settings-section"><h2>AI assistant</h2><div class="proj settings-group"><b>Server-managed connection</b><p>AI provider credentials belong in secure server configuration, not in this browser. The provider endpoint and request format will be connected after the server API details are supplied.</p></div></section>';
     }
     return [title, sub, h];
   }
@@ -1350,6 +1468,7 @@ export function initDashboard() {'use strict';
     app.classList.remove('swipe');
     var page = infoPage(S.page);
     app.classList.add('full-view');
+    document.body.classList.toggle('print-report', S.page === 'report');
     app.innerHTML = '<div class="full-page"><header class="full-page-head"><div><h1>' + esc(page[0]) + '</h1><p>' + esc(page[1]) + '</p></div>' +
       '<button class="btn2" type="button" data-page-home>Back to dashboard</button></header><section class="full-page-grid" aria-label="' + esc(page[0]) + '">' +
       (page[2] || '<div class="okbox">No information is available.</div>') + '</section></div>';
@@ -1358,6 +1477,7 @@ export function initDashboard() {'use strict';
     S.page = null;
     S.drawer = null;
     S.pop = null;
+    document.body.classList.remove('print-report');
     renderNav();
     renderPops();
     render();
@@ -1380,13 +1500,18 @@ export function initDashboard() {'use strict';
   };
   function stamp() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   function refreshNow(quiet) { document.querySelector('.updated').textContent = 'Last updated ' + stamp(); render(); if (S.drawer) renderDrawer(); if (!quiet) toast('Dashboard refreshed'); }
-  function setAuto(on) { S.auto = on; clearInterval(autoTimer); if (on) autoTimer = setInterval(function () { refreshNow(true); }, S.every * 1000); toast('Auto-refresh ' + (on ? 'on · every ' + S.every + ' s' : 'off')); }
+  function requestSourceSync(quiet) {
+    var request = new Event('xone-sync-request', { cancelable: true });
+    window.dispatchEvent(request);
+    if (!request.defaultPrevented) refreshNow(quiet);
+  }
+  function setAuto(on) { S.auto = on; clearInterval(autoTimer); if (on) autoTimer = setInterval(function () { requestSourceSync(true); }, S.every * 1000); toast('Auto-refresh ' + (on ? 'on · every ' + S.every + ' s' : 'off')); }
   function openInfo(k) {
     S.page = k;
     S.drawer = null;
     S.open = null;
     S.pop = null;
-    var parent = { weekly: 'rep', board: 'rep', budget: 'fin', spend: 'fin', register: 'rm', mitig: 'rm' }[k];
+    var parent = { weekly: 'rep', board: 'rep', report: 'rep', budget: 'fin', spend: 'fin', register: 'rm', mitig: 'rm' }[k];
     if (parent) S.nav[parent] = true;
     shell.classList.remove('menu-open');
     renderNav();
@@ -1400,6 +1525,8 @@ export function initDashboard() {'use strict';
     var t = e.target.closest('button,a,[data-day],.updated'); if (!t) return;
     var a, stop = true;
     if (t.hasAttribute('data-page-home')) goDashboard();
+    else if (t.hasAttribute('data-page')) openInfo(t.getAttribute('data-page'));
+    else if (t.hasAttribute('data-print-report')) window.print();
     else if (t.matches('.updated')) refreshNow();
     else if ((a = t.getAttribute('data-stub'))) openInfo(a === 'Settings' ? 'settings' : 'help');
     else if (t.hasAttribute('data-nav') && t.getAttribute('data-nav') === 'dash') goDashboard();
@@ -1421,7 +1548,7 @@ export function initDashboard() {'use strict';
     else if (t.hasAttribute('data-copy')) { var tx = t.getAttribute('data-copy'); try { navigator.clipboard.writeText(tx).then(function () { toast('Copied'); }, function () { toast('Copy blocked by the browser'); }); } catch (x) { toast('Copy blocked by the browser'); } }
     else if (t.hasAttribute('data-auto')) { setAuto(!S.auto); render(); }
     else if ((a = t.getAttribute('data-every'))) { S.every = +a; if (S.auto) setAuto(true); render(); }
-    else if (t.hasAttribute('data-refresh')) refreshNow();
+    else if (t.hasAttribute('data-refresh')) requestSourceSync();
     else stop = false;
     if (stop) e.stopImmediatePropagation();
   }, true);
@@ -1466,6 +1593,33 @@ export function initDashboard() {'use strict';
     var data = event.detail || {};
     var snapshot = data.snapshot;
     var issues = snapshot && Array.isArray(snapshot.jiraIssues) ? snapshot.jiraIssues : [];
+    Object.keys(VIEWS).forEach(function (view) {
+      VIEWS[view].health = ['—', 'historical data unavailable'];
+      VIEWS[view].off = ['—', 'historical data unavailable', 0];
+      VIEWS[view].crit = ['—', 'historical data unavailable'];
+      VIEWS[view].stuck = ['—', 'historical data unavailable'];
+      VIEWS[view].pot = ['—', 'historical data unavailable'];
+    });
+    [
+      peopleCapacityRisks,
+      crossSystemRisks,
+      customerImpactRisks,
+      anomalyRisks,
+      technologyRisks,
+      aiGovernanceRisks,
+      technologyCostRisks,
+      technicalDebtRisks
+    ].forEach(function (items) { items.length = 0; });
+    var updatedLabel = document.querySelector('.updated');
+    if (updatedLabel) {
+      var syncedAt = snapshot && snapshot.syncedAt ? new Date(snapshot.syncedAt) : null;
+      updatedLabel.textContent = syncedAt && !Number.isNaN(syncedAt.getTime())
+        ? 'Last updated ' + syncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : 'Not synced';
+      updatedLabel.title = syncedAt && !Number.isNaN(syncedAt.getTime())
+        ? syncedAt.toLocaleString()
+        : 'No successful source sync has been recorded';
+    }
     var today = new Date();
     TODAY = today;
     var departments = {};
@@ -1510,7 +1664,7 @@ export function initDashboard() {'use strict';
         type: impactedDepartment ? 'cross' : issue.client ? 'client' : 'internal',
         from: impactedDepartment ? dept : '',
         to: impactedDepartment,
-        area: issue.deliveryInitiative || issue.project || '',
+        area: impactArea(issue.impactArea, issue.deliveryInitiative),
         risk: issue.summary || '',
         cause: issue.status || '',
         impact: issue.customerImpact || '',
@@ -1540,6 +1694,10 @@ export function initDashboard() {'use strict';
       h: RISKS.filter(function (issue) { return issue.lvl === 'h'; }).length,
       n: RISKS.filter(function (issue) { return issue.lvl === 'm' || issue.lvl === 'n'; }).length
     };
+    var bubble = document.getElementById('bubble');
+    if (bubble) bubble.textContent = RISKS.length
+      ? criticalOpen().length + ' critical risks need action. Ask me for a briefing.'
+      : 'No Jira risk data is available yet.';
     S.sev = { c: true, h: true, m: true, n: true };
     S.types = { client: true, internal: true, cross: true };
     renderNav();

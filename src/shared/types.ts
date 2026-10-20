@@ -15,6 +15,7 @@ export interface JiraIssueSummary {
   client?: string;
   customerImpact?: string;
   mitigation?: string;
+  impactArea?: string;
   owner?: string;
   cooDecision?: string;
   cooApprover?: string;

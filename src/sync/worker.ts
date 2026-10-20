@@ -48,7 +48,7 @@ export async function synchronizeSources(
       confluencePages: confluence.status.state === 'connected' ? confluence.data : previous?.confluencePages ?? [],
       bitbucketRepositories:
         bitbucket.status.state === 'connected' ? bitbucket.data : previous?.bitbucketRepositories ?? [],
-      syncedAt,
+      syncedAt: jira.status.state === 'connected' ? syncedAt : previous?.syncedAt ?? '',
     },
     state: {
       jira: withLastSuccess(jira.status, previousState?.jira, syncedAt),

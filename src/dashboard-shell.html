@@ -10,10 +10,6 @@
       </button>
     </div>
     <nav class="menu" id="menu"></nav>
-    <div class="bottom">
-      <button class="nav" data-stub="Help center"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><path d="M12 17.5v.01"/></svg><span class="lbl">Help center</span></button>
-      <button class="nav" data-stub="Settings"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span class="lbl">Settings</span></button>
-    </div>
   </aside>
 
   <div class="body">
@@ -27,7 +23,7 @@
         <div class="pop left" id="pop-filter" hidden></div>
       </div>
       <span class="spacer"></span>
-      <span class="updated">Last updated 10:45</span>
+      <span class="updated">Not synced</span>
       <div class="anchor">
         <button class="tbtn icon" data-pop="notif" aria-label="Notifications" title="Notifications"><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="dotbadge">3</span></button>
         <div class="pop" id="pop-notif" hidden style="width:320px"></div>
@@ -41,7 +37,12 @@
         <div class="pop" id="pop-cal" hidden></div>
       </div>
       <div id="forge-status-slot"></div>
-      <span class="tbtn user profile-slot" aria-label="Signed in as Vishva"><span class="avatar sm">V</span><span class="uname">Vishva</span></span>
+      <div class="anchor profile-anchor">
+        <button class="tbtn user profile-slot" type="button" data-pop="profile" aria-label="Open profile menu" aria-expanded="false">
+          <span class="avatar sm">V</span><span class="uname">Vishva</span><svg class="i profile-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="pop profile-pop" id="pop-profile" hidden></div>
+      </div>
     </div></header>
 
     <main class="page" id="app"></main>
