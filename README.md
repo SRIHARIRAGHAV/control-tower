@@ -109,12 +109,14 @@ These summaries use populated Jira fields; missing department, client, or impact
 values are called out instead of being inferred. Due dates appear in the
 deadline timeline, while approval fields and approval age appear in the COO
 approval summary. Overall health is a current status/priority index, not a
-prediction. Desktop layouts automatically adjust to available screen width and
-height; phones use a single-column layout with normal vertical scrolling.
-Jira issue history is not fetched. Confluence sync
-fetches page metadata only, while Bitbucket sync fetches repository metadata
-and recent commits (not page content, source code, or pull requests). Do not
-interpret the current indicators as a forecast or financial risk score.
+prediction. An evidence-based delivery forecast is calculated during sync from
+Jira resolution dates and is shown only when at least 15 completed issues from
+the last 90 days are available. Reopen events, Bitbucket pull requests and
+pipelines, and Confluence modification dates are not currently synced, so those
+forecast signals report insufficient data rather than inventing a result.
+The forecast is not a financial risk score. Desktop dashboard content is
+available as two swipeable pages; the layout adjusts to available screen width,
+and phones use vertical scrolling within each page.
 
 Jira and Confluence access uses the app's declared Forge scopes. Bitbucket is optional and uses a Bitbucket OAuth consumer with repository read
 permission, configured through **encrypted Forge variables**:

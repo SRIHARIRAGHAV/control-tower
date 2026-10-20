@@ -535,6 +535,11 @@ button.cell:hover{outline:2px solid var(--accent);outline-offset:1px}
 body.big .page{padding-bottom:18px}
 
 /* ================= COO risk intelligence (add-on; delete this block to remove) ================= */
+.forecast-grid{display:grid;gap:8px;margin-top:8px}
+.forecast-part{min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--sunk)}
+.forecast-part>b{display:block;margin-bottom:4px;font-size:12px}
+.forecast-part ul{display:grid;gap:4px;padding-left:16px;font-size:11.5px;line-height:1.3;color:var(--fg2)}
+.forecast-part p{font-size:11.5px;line-height:1.3}
 .cra-list{display:flex;flex-direction:column}
 .cra{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:0 10px;align-items:center;width:100%;padding:7px 2px;border:none;border-top:1px solid var(--line);background:none;text-align:left}
 .cra:first-child{border-top:none;padding-top:0}
@@ -704,4 +709,36 @@ body.big .page{padding-bottom:18px}
   .executive-view .imp>.mx{grid-column:auto}
   .department-slide{grid-template-columns:minmax(0,1fr)}
   .department-carousel .ch{align-items:flex-start;flex-direction:column}
+}
+/* ================= SWIPE LAYOUT (add-on; delete this block + slideify() to go back to vertical scrolling) =================
+   Card styles are untouched. Only the arrangement changes: two slides side by side, swiped horizontally. */
+main.page.swipe{display:block;width:100%;min-width:0;overflow:hidden;padding:0} /* #app becomes the viewport of the deck */
+.deck{display:flex;width:100%;min-width:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-behavior:smooth;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+.deck::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;min-width:0;padding-bottom:72px;scroll-snap-align:start;scroll-snap-stop:always}   /* each slide re-uses .page's grid + padding */
+.slide.s2{grid-template-columns:minmax(0,1fr)}                 /* slide 2 has no right rail: full width */
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
+@container main (max-width:640px){.pair{grid-template-columns:minmax(0,1fr)}}
+@container page (max-width:1180px){.s1 .rail .ai{grid-column:1/-1}}
+/* pager: two tabs that mirror the swipe position */
+.pager{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;display:flex;gap:4px;padding:4px;
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:var(--pop)}
+.pager[hidden]{display:none}
+.pager button{height:32px;padding:0 14px;border:none;border-radius:999px;background:none;font-weight:600;font-size:13px;color:var(--muted);white-space:nowrap}
+.pager button.on{background:var(--accent);color:#fff}
+@media (max-width:640px){.pager{left:14px;transform:none;bottom:22px;max-width:calc(100vw - 92px)}.pager button{padding:0 10px;font-size:12px;overflow:hidden;text-overflow:ellipsis}}
+/* timeline buckets: swipe sideways instead of stacking down the page when the card is narrow */
+@container (max-width:720px){
+  .deck .weeks{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none}
+  .deck .wk{display:flex;flex-direction:column;flex:0 0 min(78%,280px);padding-bottom:0;scroll-snap-align:start}
+  .deck .wk .rail{grid-column:auto;grid-row:auto;height:18px;align-items:center;justify-content:flex-start;padding-top:0}
+  .deck .wk .rail::before{left:0;right:-12px;top:50%;bottom:auto;width:auto;height:3px;transform:translateY(-50%)}
+  .deck .wk:last-child .rail::before{display:block;right:0}
+  .deck .wk .head{display:block}
+}
+/* phones: department cards swipe too */
+@container page (max-width:560px){
+  .deck .depts{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding-bottom:6px;scrollbar-width:none}
+  .deck .depts>*{flex:0 0 82%;scroll-snap-align:start}
 }

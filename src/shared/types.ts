@@ -1,3 +1,5 @@
+import type { RiskForecast } from '../forecast/risk-forecast';
+
 export interface JiraIssueSummary {
   key: string;
   summary: string;
@@ -6,6 +8,7 @@ export interface JiraIssueSummary {
   project: string;
   updated: string;
   createdAt?: string;
+  resolvedAt?: string;
   dueDate?: string;
   department?: string;
   impactedDepartment?: string;
@@ -65,6 +68,7 @@ export interface SyncState {
 export interface DashboardDataResponse {
   snapshot: XoneSnapshot | null;
   state: SyncState;
+  forecast?: RiskForecast;
 }
 
 export interface CreateJiraIssueInput {

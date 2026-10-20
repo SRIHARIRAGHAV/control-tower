@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SourceStatus, SyncState, XoneSnapshot } from '../../../shared/types';
+import type { DashboardDataResponse, SourceStatus, SyncState, XoneSnapshot } from '../../../shared/types';
 import SourceInsights from '../../../components/SourceInsights';
 import { getDashboardData, syncNow } from '../../services/forge-api';
 
 type IntegrationKey = 'jira' | 'confluence' | 'bitbucket';
+type RiskForecast = DashboardDataResponse['forecast'];
 
 const sourceLabels: Array<[IntegrationKey, string]> = [
   ['jira', 'Jira'],
@@ -11,8 +12,8 @@ const sourceLabels: Array<[IntegrationKey, string]> = [
   ['bitbucket', 'Bitbucket'],
 ];
 
-function publishDashboardData(snapshot: XoneSnapshot | null, state: SyncState | null) {
-  window.dispatchEvent(new CustomEvent('xone-source-data', { detail: { snapshot, state } }));
+function publishDashboardData(snapshot: XoneSnapshot | null, state: SyncState | null, forecast?: RiskForecast) {
+  window.dispatchEvent(new CustomEvent('xone-source-data', { detail: { snapshot, state, forecast } }));
 }
 
 function sourceText(status: SourceStatus): string {
@@ -24,6 +25,7 @@ function sourceText(status: SourceStatus): string {
 export default function ForgeIntegrationStatus() {
   const [state, setState] = useState<SyncState | null>(null);
   const [snapshot, setSnapshot] = useState<XoneSnapshot | null>(null);
+  const [forecast, setForecast] = useState<RiskForecast>();
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -35,10 +37,11 @@ export default function ForgeIntegrationStatus() {
       const data = await getDashboardData();
       setState(data.state);
       setSnapshot(data.snapshot);
-      publishDashboardData(data.snapshot, data.state);
+      setForecast(data.forecast);
+      publishDashboardData(data.snapshot, data.state, data.forecast);
       setError('');
     } catch (reason) {
-      publishDashboardData(snapshot, state);
+      publishDashboardData(snapshot, state, forecast);
       setError(reason instanceof Error ? reason.message : 'Forge status could not be loaded.');
     } finally {
       setIsLoading(false);
@@ -51,7 +54,8 @@ export default function ForgeIntegrationStatus() {
       const data = await syncNow();
       setState(data.state);
       setSnapshot(data.snapshot);
-      publishDashboardData(data.snapshot, data.state);
+      setForecast(data.forecast);
+      publishDashboardData(data.snapshot, data.state, data.forecast);
       setError('');
     } catch (reason) {
       const syncError = reason instanceof Error ? reason.message : 'Source synchronization failed.';
@@ -59,10 +63,11 @@ export default function ForgeIntegrationStatus() {
         const data = await getDashboardData();
         setState(data.state);
         setSnapshot(data.snapshot);
-        publishDashboardData(data.snapshot, data.state);
+        setForecast(data.forecast);
+        publishDashboardData(data.snapshot, data.state, data.forecast);
       } catch (statusReason) {
         const statusError = statusReason instanceof Error ? statusReason.message : 'Status refresh failed.';
-        publishDashboardData(snapshot, state);
+        publishDashboardData(snapshot, state, forecast);
         setError(statusError === syncError ? syncError : `${syncError} Status refresh failed: ${statusError}`);
         return;
       }

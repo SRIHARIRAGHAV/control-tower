@@ -55,6 +55,7 @@ export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>>
     'project',
     'updated',
     'created',
+    'resolutiondate',
     'duedate',
     ...Object.values(customFields).filter((fieldId): fieldId is string => Boolean(fieldId)),
   ];

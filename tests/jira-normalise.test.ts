@@ -13,6 +13,7 @@ describe('mapJiraIssues', () => {
           project: { name: 'Kanban' },
           updated: '2026-10-19T10:00:00.000Z',
           created: '2026-10-01T10:00:00.000Z',
+          resolutiondate: '2026-10-10T10:00:00.000Z',
           duedate: '2026-10-30',
           customfield_10001: 'Demo Client',
           customfield_10008: { value: 'Operations' },
@@ -46,6 +47,7 @@ describe('mapJiraIssues', () => {
     expect(issue).toMatchObject({
       key: 'KAN-1',
       createdAt: '2026-10-01T10:00:00.000Z',
+      resolvedAt: '2026-10-10T10:00:00.000Z',
       dueDate: '2026-10-30',
       department: 'Operations',
       impactedDepartment: 'Finance & Legal',
@@ -65,6 +67,7 @@ describe('mapJiraIssues', () => {
     });
 
     expect(issue.dueDate).toBeUndefined();
+    expect(issue.resolvedAt).toBeUndefined();
     expect(issue.cooDecision).toBeUndefined();
   });
 });

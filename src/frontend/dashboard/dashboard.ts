@@ -135,7 +135,7 @@ export function initDashboard() {'use strict';
   // =====================================================================
   var S = {
     view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null, wkOpen: {}, page: null,
-    drawer: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
+    drawer: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false, slide: 0,
     msgs: [{ who: 'ai', text: 'I can summarize the latest Jira, Confluence, and Bitbucket records after the connected data loads.' }]
   };
   var departmentSlide = 0;
@@ -586,13 +586,22 @@ export function initDashboard() {'use strict';
   function render() {
     if (!sourceDataReceived) {
       app.classList.remove('executive-view');
+      app.classList.remove('swipe');
+      var loadingPager = document.getElementById('pager');
+      if (loadingPager) loadingPager.hidden = true;
       var loadingNotice = document.getElementById('source-data-notice');
       if (loadingNotice) loadingNotice.hidden = false;
       app.innerHTML = '';
       return;
     }
     app.classList.toggle('executive-view', !S.page);
-    if (S.page) { renderFullPage(); return; }
+    if (S.page) {
+      app.classList.remove('swipe');
+      var pagePager = document.getElementById('pager');
+      if (pagePager) pagePager.hidden = true;
+      renderFullPage();
+      return;
+    }
     var updatedLabel = document.querySelector('.updated');
     if (updatedLabel) updatedLabel.textContent = liveSourceData && liveSourceData.snapshot && liveSourceData.snapshot.syncedAt
       ? 'Last synced ' + new Date(liveSourceData.snapshot.syncedAt).toLocaleString()
@@ -974,12 +983,45 @@ export function initDashboard() {'use strict';
           '</div></div>';
       }).join('')) + '</section>';
     if (sourceDataReceived) {
-      h += '<section class="card coo" aria-label="COO risk areas"><div class="ch"><h3>COO risk areas</h3><span class="pill m">Limited data</span></div>' +
-        '<p class="muted">Jira due dates, customer impact, mitigation, and approval fields are shown on their issues. A broader risk score still requires financial and historical data.</p></section>';
+      var forecast = liveSourceData && liveSourceData.forecast;
+      function forecastPart(title, part, describe) {
+        if (!part) return '<div class="forecast-part"><b>' + title + '</b><p class="muted">Forecast will appear after a source sync.</p></div>';
+        if (part.status === 'insufficient-data') {
+          return '<div class="forecast-part"><b>' + title + '</b><p class="muted">Not enough data · ' + esc(part.reason) + '</p></div>';
+        }
+        return '<div class="forecast-part"><b>' + title + '</b>' + describe(part) + '</div>';
+      }
+      var forecastMarkup = forecast
+        ? forecastPart('Delivery outlook', forecast.delivery, function (part) {
+            return '<ul>' + part.windows.map(function (window) {
+              return '<li>' + window.window + ' days · ' + Math.round(window.probabilityAnyLate * 100) +
+                '% chance of one or more late · ' + window.issuesDue + ' due issues</li>';
+            }).join('') + '</ul>';
+          }) +
+          forecastPart('Potential risks', forecast.potentialRisks, function (part) {
+            return part.items.length
+              ? '<ul>' + part.items.slice(0, 3).map(function (item) {
+                  return '<li><b>' + esc(item.risk) + '</b> · ' + esc(item.action) + '</li>';
+                }).join('') + '</ul>'
+              : '<p class="muted">No potential risks met the available-data thresholds.</p>';
+          }) +
+          forecastPart('Anomalies', forecast.anomalies, function (part) {
+            return part.items.length
+              ? '<ul>' + part.items.slice(0, 3).map(function (item) {
+                  return '<li><b>' + esc(item.metric) + ':</b> ' + item.now + ' ' + esc(item.unit) + ' · ' + esc(item.cause) + '</li>';
+                }).join('') + '</ul>'
+              : '<p class="muted">No anomaly exceeded the configured threshold.</p>';
+          })
+        : '<p class="muted">Forecast will appear after a source sync.</p>';
+      h += '<section class="card coo" aria-label="COO risk areas"><div class="ch"><h3>Evidence-based forecast</h3>' +
+        '<span class="pill ' + (forecast ? 'm' : 'n') + '">' + (forecast ? 'Synced' : 'Waiting for sync') + '</span></div>' +
+        '<p class="muted">Predictions use available Jira and repository history; signals without enough history are marked instead of guessed.</p>' +
+        '<div class="forecast-grid">' + forecastMarkup + '</div></section>';
     } else h += cooRiskCard();
     h += '</aside>';
 
     app.innerHTML = h;
+    slideify();
     alignNames();
     if (innerWidth >= 1200 && typeof fit === 'function') requestAnimationFrame(fit);
   }
@@ -1987,6 +2029,87 @@ export function initDashboard() {'use strict';
   }
   // ===================== end COO risk intelligence =====================
 
+  var SLIDES = ['COO priorities', 'Organisation & timeline'];
+  function makeSlideElement(tagName, className) {
+    var element = document.createElement(tagName);
+    element.className = className;
+    return element;
+  }
+  function slideify() {
+    var pager = document.getElementById('pager');
+    var main = app.querySelector(':scope > .maincol');
+    var rail = app.querySelector(':scope > .rail');
+    if (!main || !rail) {
+      if (pager) pager.hidden = true;
+      return;
+    }
+
+    var firstSlide = makeSlideElement('div', 'page executive-view slide s1');
+    var secondSlide = makeSlideElement('div', 'page executive-view slide s2');
+    var firstMain = makeSlideElement('div', 'maincol');
+    var secondMain = makeSlideElement('div', 'maincol');
+    var pairedCards = makeSlideElement('div', 'pair');
+    Array.prototype.slice.call(main.children).forEach(function (child) {
+      (child.matches('.verdict,.kpis') ? firstMain : secondMain).appendChild(child);
+    });
+    Array.prototype.slice.call(rail.children).forEach(function (child) {
+      if (!child.matches('.ai,.coo')) pairedCards.appendChild(child);
+    });
+    if (pairedCards.children.length) firstMain.appendChild(pairedCards);
+    firstSlide.appendChild(firstMain);
+    firstSlide.appendChild(rail);
+    secondSlide.appendChild(secondMain);
+
+    var deck = makeSlideElement('div', 'deck');
+    deck.appendChild(firstSlide);
+    deck.appendChild(secondSlide);
+    app.innerHTML = '';
+    app.classList.add('swipe');
+    app.appendChild(deck);
+    deck.scrollLeft = (S.slide || 0) * deck.clientWidth;
+    deck.addEventListener('scroll', function () {
+      S.slide = Math.round(deck.scrollLeft / (deck.clientWidth || 1));
+      updatePager();
+    }, { passive: true });
+
+    if (!pager) {
+      pager = makeSlideElement('nav', 'pager');
+      pager.id = 'pager';
+      pager.setAttribute('aria-label', 'Dashboard slides');
+      pager.innerHTML = SLIDES.map(function (title, index) {
+        return '<button type="button" data-slide="' + index + '">' + title + '</button>';
+      }).join('');
+      pager.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-slide]');
+        if (button) goSlide(Number(button.getAttribute('data-slide')));
+      });
+      document.body.appendChild(pager);
+    }
+    pager.hidden = false;
+    updatePager();
+  }
+  function goSlide(index) {
+    var deck = app.querySelector('.deck');
+    if (!deck) return;
+    var boundedIndex = Math.max(0, Math.min(SLIDES.length - 1, index));
+    deck.scrollTo({ left: boundedIndex * deck.clientWidth, behavior: 'smooth' });
+  }
+  function updatePager() {
+    Array.prototype.forEach.call(document.querySelectorAll('#pager button'), function (button) {
+      var active = Number(button.getAttribute('data-slide')) === (S.slide || 0);
+      button.classList.toggle('on', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+  }
+  document.addEventListener('keydown', function (event) {
+    if (!app.classList.contains('swipe') || S.drawer || S.chat ||
+      (event.target.closest && event.target.closest('input,textarea,select,[contenteditable="true"]'))) return;
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    goSlide((S.slide || 0) + (event.key === 'ArrowRight' ? 1 : -1));
+  });
+
   // =====================================================================
   // EVENTS
   // =====================================================================
@@ -2080,7 +2203,14 @@ export function initDashboard() {'use strict';
     if (y + r.height > innerHeight - 8) y = e.clientY - r.height - 14;
     tip.style.left = (x / Z) + 'px'; tip.style.top = (y / Z) + 'px';
   });
-  addEventListener('resize', function () { requestAnimationFrame(function () { alignNames(); fit(); }); });
+  addEventListener('resize', function () {
+    requestAnimationFrame(function () {
+      alignNames();
+      fit();
+      var deck = app.querySelector('.deck');
+      if (deck) deck.scrollLeft = (S.slide || 0) * deck.clientWidth;
+    });
+  });
 
 
   // =====================================================================

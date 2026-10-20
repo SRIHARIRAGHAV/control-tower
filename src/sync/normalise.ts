@@ -14,6 +14,7 @@ export interface JiraSearchResponse {
       project?: { name?: string };
       updated?: string;
       created?: string;
+      resolutiondate?: string | null;
       duedate?: string;
       [fieldId: string]: unknown;
     };
@@ -90,6 +91,7 @@ export function mapJiraIssues(body: JiraSearchResponse, customFields: JiraCustom
     project: issue.fields?.project?.name ?? 'Unknown',
     updated: issue.fields?.updated ?? '',
     createdAt: issue.fields?.created,
+    resolvedAt: issue.fields?.resolutiondate ?? undefined,
     dueDate: jiraFieldText(issue.fields?.duedate),
     department: customFields.department ? jiraFieldText(issue.fields?.[customFields.department]) : undefined,
     impactedDepartment: customFields.impactedDepartment ? jiraFieldText(issue.fields?.[customFields.impactedDepartment]) : undefined,

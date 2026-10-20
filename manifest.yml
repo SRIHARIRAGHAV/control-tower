@@ -16,6 +16,12 @@ app:
             type: any
           updatedAt:
             type: string
+      - name: xone_risk_forecast
+        attributes:
+          payload:
+            type: any
+          updatedAt:
+            type: string
 modules:
   jira:globalPage:
     - key: xone-risk-intelligence

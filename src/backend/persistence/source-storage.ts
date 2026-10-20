@@ -1,6 +1,6 @@
-import { readSnapshot, readSyncState } from '../../db/client';
+import { readRiskForecast, readSnapshot, readSyncState } from '../../db/client';
 
 export async function readStoredSourceData() {
-  const [snapshot, state] = await Promise.all([readSnapshot(), readSyncState()]);
-  return { snapshot, state };
+  const [snapshot, state, forecast] = await Promise.all([readSnapshot(), readSyncState(), readRiskForecast()]);
+  return { snapshot, state, forecast };
 }

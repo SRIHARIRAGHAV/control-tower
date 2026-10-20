@@ -27,7 +27,11 @@ function initialLiveState(): DashboardDataResponse['state'] {
 
 export async function getDashboardData(): Promise<DashboardDataResponse> {
   const stored = await readStoredSourceData();
-  return { snapshot: stored.snapshot, state: stored.state ?? initialLiveState() };
+  return {
+    snapshot: stored.snapshot,
+    state: stored.state ?? initialLiveState(),
+    ...(stored.forecast ? { forecast: stored.forecast } : {}),
+  };
 }
 
 export async function syncSources() {
