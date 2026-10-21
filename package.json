@@ -5,10 +5,10 @@
   "type": "module",
   "packageManager": "npm@11.19.1",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "node --experimental-strip-types --test",
-    "preview": "vite preview --host",
+    "preview": "vite preview",
     "forge:tunnel": "forge tunnel",
     "forge:lint": "forge lint",
     "forge:deploy": "npm run build && forge deploy",

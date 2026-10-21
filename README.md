@@ -5,7 +5,11 @@
     npm ci
     npm run dev
 
-Open http://localhost:5173. Vite development mode uses **clearly labelled synthetic demo fixtures** by default, so the dashboard can be demonstrated without an Atlassian session or credentials. The fixtures are not live company data and must never be used for business decisions. The Sync button refreshes the local fixture response; it does not call Jira, Confluence, or Bitbucket.
+Open http://localhost:5173. The local Vite server binds to localhost by default
+and uses **clearly labelled synthetic demo fixtures** so developers can work
+without an Atlassian session or credentials. The fixtures are not live company
+data and must never be used for business decisions. The Sync button refreshes
+the local fixture response; it does not call Jira, Confluence, or Bitbucket.
 
 To turn off local demo mode, set `VITE_DEMO_MODE=false` in your local environment and run the app inside the configured Forge context. The live connectors use Forge APIs and are not a standalone local REST integration. Local Vite mode cannot validate Atlassian authentication, Forge storage, scheduled triggers, or provider scopes.
 
@@ -63,20 +67,68 @@ is for installing the app on a Jira site after the first deployment.
 ## Access-control configuration
 
 The Forge resolver context is the only source of the current account ID; the
-frontend cannot supply or override the identity. Any signed-in Jira user who
-can open the installed app may view the dashboard and trigger a sync. Jira and
-Confluence requests run as that user, so each user's provider permissions
-still apply. User-triggered snapshots are isolated per Atlassian account. The
-scheduled sync runs as the app and stores a separate snapshot which is not
-returned by user-facing resolvers. Jira write actions run as the current user;
-Jira enforces that user's project and issue permissions.
+frontend cannot supply or override identity or role. The backend denies access
+unless both an explicit Forge access mode and the account's role allowlist
+match. Jira administrator status does not grant a Control Tower role.
+The manifest exposes a Jira `globalPage` and no public webtrigger or anonymous
+data route; having the app URL alone does not satisfy the resolver authorization
+checks. Access to the Jira app entry point is additionally subject to the
+site's Forge installation and Jira app-availability controls.
 
-The Forge app must be deployed and installed by a Forge administrator. This
-does not bypass the Jira site's normal sign-in, site access, project
-permissions, or app availability policies. Configure `JIRA_PROJECT_KEY` in
-Forge for scheduled app-context Jira sync; it is never accepted from a browser
-request. Local demo mode is synthetic and does not exercise Forge
-authentication or Jira permissions.
+Configure these as Forge environment variables. Forge keeps variables and
+storage separate per environment. Do not set the same role lists in both
+environments:
+
+- Development: set `CONTROL_TOWER_ACCESS_MODE=development` and list only
+  authorized developer account IDs in `CONTROL_TOWER_DEVELOPER_ACCOUNT_IDS`.
+  CEO/COO lists do not grant access in development.
+- Production: set `CONTROL_TOWER_ACCESS_MODE=production` and assign only
+  approved executives to `CONTROL_TOWER_CEO_ACCOUNT_IDS` and
+  `CONTROL_TOWER_COO_ACCOUNT_IDS`. Developer IDs do not grant access in
+  production.
+- Any unset/unknown mode or unmatched account is denied. Staging remains
+  denied unless its policy is deliberately configured.
+
+The comma-separated values are Atlassian account IDs, not email addresses.
+Set them in the Forge environment, never in frontend variables or committed
+files. Example configuration:
+
+    forge variables set --environment development CONTROL_TOWER_ACCESS_MODE development
+    forge variables set --environment development CONTROL_TOWER_DEVELOPER_ACCOUNT_IDS "developer-account-id"
+    forge variables set --environment production CONTROL_TOWER_ACCESS_MODE production
+    forge variables set --environment production CONTROL_TOWER_CEO_ACCOUNT_IDS "ceo-account-id"
+    forge variables set --environment production CONTROL_TOWER_COO_ACCOUNT_IDS "coo-account-id"
+    forge deploy --environment development
+    forge deploy --environment production
+
+After changing variables, deploy to that same Forge environment before the
+change takes effect. Revoke a user by removing their account ID from the
+corresponding allowlist and redeploying that environment; authorization has no
+in-process role cache. An already-open dashboard rechecks authorization every
+60 seconds and when the tab becomes active, then clears in-memory dashboard
+data when authorization is lost. Browser throttling can delay periodic checks
+in an inactive tab; backend resolvers enforce authorization on every request.
+Control who can change Forge variables, deploy, or install production through
+Atlassian/Forge administration; repository code cannot assign those platform
+administrative permissions. Deploy/install the development app only on a
+non-production Jira site or test project, with separate integration
+credentials and synthetic or sanitized test data. Developer access does not
+grant production access.
+
+The `getAuthStatus`, `getDashboardData`, `syncNow`, `createJiraIssue`, and
+`addJiraComment` resolvers all use the same server-side authorization policy.
+The dashboard is not initialized and data resolvers do not return snapshots
+until authorization succeeds. User-triggered Jira and Confluence requests run
+as the current user; Jira still enforces that user's project and issue
+permissions. User-triggered snapshots remain isolated per account. Scheduled
+sync runs as the app and writes only to the current Forge environment's
+storage; it does not expose data through the user-facing resolvers.
+
+Configure `JIRA_PROJECT_KEY` separately in each Forge environment for
+scheduled app-context Jira sync; it is never accepted from a browser request.
+Local Vite demo mode is only a localhost synthetic preview; it is read-only and
+does not test Forge authentication or role authorization. Do not expose the
+local server on a network or use it with confidential production data.
 
 ## AI service configuration
 

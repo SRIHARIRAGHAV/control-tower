@@ -1,4 +1,4 @@
-export type AccessRole = 'user';
+export type AccessRole = 'developer' | 'ceo' | 'coo';
 export type AccessAction = 'VIEW' | 'SYNC' | 'WRITE' | 'ADMIN';
 
 export interface AuthenticatedUser {
@@ -28,6 +28,18 @@ export class AccessError extends Error {
   }
 }
 
+type Environment = { process?: { env?: Record<string, string | undefined> } };
+
+function environmentValue(name: string): string {
+  const env = (globalThis as typeof globalThis & Environment).process?.env;
+  return env?.[name]?.trim().toLowerCase() ?? '';
+}
+
+function configuredIds(name: string): Set<string> {
+  const env = (globalThis as typeof globalThis & Environment).process?.env;
+  return new Set((env?.[name] ?? '').split(',').map((value) => value.trim()).filter(Boolean));
+}
+
 function accountIdFromContext(context: unknown): string | undefined {
   if (!context || typeof context !== 'object' || !('accountId' in context)) return undefined;
   const accountId = context.accountId;
@@ -40,12 +52,24 @@ export function getAuthenticatedUser(context: unknown): AuthenticatedUser {
   return { accountId };
 }
 
-function actionIsAvailable(action: AccessAction): boolean {
+function roleFor(accountId: string): AccessRole | null {
+  const mode = environmentValue('CONTROL_TOWER_ACCESS_MODE');
+  if (mode === 'development' && configuredIds('CONTROL_TOWER_DEVELOPER_ACCOUNT_IDS').has(accountId)) {
+    return 'developer';
+  }
+  if (mode === 'production') {
+    if (configuredIds('CONTROL_TOWER_CEO_ACCOUNT_IDS').has(accountId)) return 'ceo';
+    if (configuredIds('CONTROL_TOWER_COO_ACCOUNT_IDS').has(accountId)) return 'coo';
+  }
+  return null;
+}
+
+function roleAllowsAction(role: AccessRole, action: AccessAction): boolean {
   switch (action) {
     case 'VIEW':
     case 'SYNC':
     case 'WRITE':
-      return true;
+      return role === 'developer' || role === 'ceo' || role === 'coo';
     case 'ADMIN':
       return false;
   }
@@ -53,12 +77,14 @@ function actionIsAvailable(action: AccessAction): boolean {
 
 export function authorize(context: unknown, action: AccessAction): AuthorizedUser {
   const user = getAuthenticatedUser(context);
-  if (!actionIsAvailable(action)) throw new AccessError('AUTHORIZATION_DENIED');
-  return { ...user, role: 'user' };
+  const role = roleFor(user.accountId);
+  if (!role || !roleAllowsAction(role, action)) throw new AccessError('AUTHORIZATION_DENIED');
+  return { ...user, role };
 }
 
 export function accessStatus(context: unknown): AccessStatus {
-  if (!accountIdFromContext(context)) {
+  const accountId = accountIdFromContext(context);
+  if (!accountId) {
     return {
       authenticated: false,
       authorized: false,
@@ -68,10 +94,21 @@ export function accessStatus(context: unknown): AccessStatus {
       code: 'AUTHENTICATION_REQUIRED',
     };
   }
+  const role = roleFor(accountId);
+  if (!role) {
+    return {
+      authenticated: true,
+      authorized: false,
+      role: null,
+      canSync: false,
+      canWrite: false,
+      code: 'AUTHORIZATION_DENIED',
+    };
+  }
   return {
     authenticated: true,
     authorized: true,
-    role: 'user',
+    role,
     canSync: true,
     canWrite: true,
   };
