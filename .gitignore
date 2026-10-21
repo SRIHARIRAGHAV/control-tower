@@ -1,3 +1,5 @@
 node_modules/
 dist/
+/forge-dist/
 .env*
+!.env.example

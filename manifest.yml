@@ -1,0 +1,60 @@
+app:
+  id: ari:cloud:ecosystem::app/76cb3871-fafd-4382-a2a3-92b803bc96ed
+  runtime:
+    name: nodejs22.x
+  storage:
+    entities:
+      - name: xone_snapshot
+        attributes:
+          payload:
+            type: any
+          updatedAt:
+            type: string
+      - name: xone_sync_status
+        attributes:
+          payload:
+            type: any
+          updatedAt:
+            type: string
+      - name: xone_risk_forecast
+        attributes:
+          payload:
+            type: any
+          updatedAt:
+            type: string
+modules:
+  jira:globalPage:
+    - key: xone-risk-intelligence
+      resource: main
+      resolver:
+        function: api-resolver
+      title: Xone Risk Intelligence
+      layout: blank
+  function:
+    - key: api-resolver
+      handler: index.handler
+    - key: hourly-risk-sync
+      handler: index.hourlySync
+      timeoutSeconds: 300
+  scheduledTrigger:
+    - key: xone-hourly-sync
+      function: hourly-risk-sync
+      interval: hour
+resources:
+  - key: main
+    path: forge-dist
+permissions:
+  scopes:
+    - read:jira-work
+    - read:jira-user
+    - write:jira-work
+    - read:page:confluence
+    - storage:app
+  content:
+    styles:
+      - unsafe-inline
+  external:
+    fetch:
+      backend:
+        - address: api.bitbucket.org
+        - address: bitbucket.org
