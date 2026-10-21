@@ -1591,50 +1591,6 @@ export function initDashboard() {'use strict';
     fit();
   });
 
-  window.addEventListener('xone-access-revoked', function () {
-    RISKS = [];
-    POTENTIAL = [];
-    PENDING = [];
-    PLAN = [];
-    DECISIONS = [];
-    NOTIFS = [];
-    DEPTS = [];
-    TOTAL_PROJECTS = 0;
-    MILESTONES = { c: 0, h: 0, n: 0, u: 0 };
-    MISSING_JIRA_FIELDS = [];
-    DASHBOARD_DATA_AVAILABLE = false;
-    DECISION_DATA_AVAILABLE = false;
-    DEPARTMENT_DATA_AVAILABLE = false;
-    DELIVERY_METRICS = calculateDeliveryMetrics([], new Date());
-    [
-      peopleCapacityRisks,
-      crossSystemRisks,
-      customerImpactRisks,
-      anomalyRisks,
-      technologyRisks,
-      aiGovernanceRisks,
-      technologyCostRisks,
-      technicalDebtRisks
-    ].forEach(function (items) { items.length = 0; });
-    Object.keys(VIEWS).forEach(function (view) {
-      VIEWS[view].health = ['—', 'historical data unavailable'];
-      VIEWS[view].off = ['—', 'historical data unavailable', 0];
-      VIEWS[view].crit = ['—', 'historical data unavailable'];
-      VIEWS[view].stuck = ['—', 'historical data unavailable'];
-      VIEWS[view].pot = ['—', 'historical data unavailable'];
-    });
-    S.drawer = null;
-    S.page = null;
-    S.open = null;
-    S.msgs = [];
-    if (autoTimer) clearInterval(autoTimer);
-    var forecastPanel = document.getElementById('forecast-summary');
-    if (forecastPanel) {
-      forecastPanel.replaceChildren();
-      forecastPanel.hidden = true;
-    }
-  });
-
   RISKS = [];
   POTENTIAL = [];
   PENDING = [];

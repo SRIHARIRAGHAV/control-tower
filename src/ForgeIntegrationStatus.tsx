@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DashboardDataResponse } from './shared/types';
 import { isSourceFresh } from './shared/data-freshness';
+import { shouldRunInitialSync } from './shared/initial-sync';
 import { getDashboardData, isLocalDemoMode, syncNow } from './frontend/services/forge-api';
 
 function publishDashboardData(data: DashboardDataResponse) {
@@ -58,7 +59,7 @@ export default function ForgeIntegrationStatus({ canSync }: { canSync: boolean }
         if (!active) return;
         setData(result);
         publishDashboardData(result);
-        if (!result.snapshot) {
+        if (shouldRunInitialSync(result.snapshot, result.state)) {
           const synced = await syncNow();
           if (!active) return;
           setData(synced);

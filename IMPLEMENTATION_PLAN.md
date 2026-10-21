@@ -5,7 +5,7 @@
 - Provide clearly labelled synthetic data in local Vite development mode.
 - Surface the deterministic backend forecast in the existing dashboard shell.
 - Keep local demo read-only; real provider requests remain in the Forge runtime.
-- Enforce environment-specific developer, CEO, and COO roles in Forge resolvers.
+- Enforce configured executive/operator roles in Forge resolvers.
 
 ## Completion criteria
 - `npm test` passes.

@@ -15,17 +15,17 @@
 - `src/connectors/jira.ts`: supports user-context interactive sync and app-context scheduled sync.
 - `src/connectors/confluence.ts` and `src/sync/normalise.ts`: map Confluence page modification timestamps when the provider response supplies one.
 - `src/backend/persistence/source-storage.ts`: avoids serving forecasts older than the source freshness threshold.
-- `src/auth/authentication.ts`: obtains identity from Forge context and maps server-configured, environment-specific developer/CEO/COO allowlists. Unknown modes and unmatched accounts fail closed.
-- `src/resolvers/dashboard.ts`: requires an authorized role before returning dashboard data.
-- `src/resolvers/sync.ts`: requires an authorized role for manual sync; scheduled sync uses the app-context Jira path.
-- `src/resolvers/claims.ts`: requires an authorized role for Jira issue creation and comments; Jira still enforces the user's permissions.
-- `.env.example`: documents local demo mode and the server-side Forge access variables.
+- `src/resolvers/authorization.ts`: adds fail-closed role allowlist checks.
+- `src/resolvers/dashboard.ts`: requires executive or operator allowlist membership to read dashboard data.
+- `src/resolvers/sync.ts`: requires operator role for manual sync; scheduled sync uses the app-context Jira path.
+- `src/resolvers/claims.ts`: requires operator role for Jira issue creation and comments.
+- `.env.example`: documents local demo flag and role allowlist variables.
 - `README.md`: documents local demo mode, role configuration and limitations.
 - `tests/authorization.test.mjs`: adds role authorization tests.
 - `tests/forecast.test.mjs`: adds deterministic forecast and insufficient-data tests.
 
 ## Intentionally not claimed as complete
 - Local mode uses synthetic fixtures, not live Atlassian records.
-- Forge environment variables, account-ID assignments, scheduled triggers and provider permissions must be configured and verified in the target Atlassian environments.
+- Live Forge scopes, account-ID allowlists, scheduled triggers and provider authentication need validation in the target Atlassian environment.
 - Jira changelog/reopening history and live Bitbucket pull-request/pipeline history are not yet retrieved by the production connectors; those forecast signals remain insufficient-data in real usage until those feeds are implemented.
 - No forecast calibration or predictive accuracy claim has been established.

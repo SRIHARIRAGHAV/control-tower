@@ -17,24 +17,11 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    let stopped = false;
-    let checking = false;
-    let checkTimer: number | undefined;
-
-    async function verifyAccess() {
-      if (!active || stopped || checking) return;
-      checking = true;
-      try {
-        const result = await getAuthStatus();
-        if (!active) return;
-        setAccess(result);
-        if (!result.authorized) {
-          window.dispatchEvent(new Event('xone-access-revoked'));
-          stopChecking();
-        }
-      } catch {
-        if (!active) return;
-        window.dispatchEvent(new Event('xone-access-revoked'));
+    void getAuthStatus().then((result) => {
+      if (!active) return;
+      setAccess(result);
+    }).catch(() => {
+      if (active) {
         setAccess({
           authenticated: false,
           authorized: false,
@@ -43,31 +30,9 @@ export default function App() {
           canWrite: false,
           code: 'AUTH_STATUS_UNAVAILABLE',
         });
-        stopChecking();
-      } finally {
-        checking = false;
       }
-    }
-
-    function checkOnReturn() {
-      if (document.visibilityState === 'visible') void verifyAccess();
-    }
-
-    function stopChecking() {
-      stopped = true;
-      if (checkTimer !== undefined) window.clearInterval(checkTimer);
-      window.removeEventListener('focus', checkOnReturn);
-      document.removeEventListener('visibilitychange', checkOnReturn);
-    }
-
-    checkTimer = window.setInterval(() => { void verifyAccess(); }, 60_000);
-    window.addEventListener('focus', checkOnReturn);
-    document.addEventListener('visibilitychange', checkOnReturn);
-    void verifyAccess();
-    return () => {
-      active = false;
-      stopChecking();
-    };
+    });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
