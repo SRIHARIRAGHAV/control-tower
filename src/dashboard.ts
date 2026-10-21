@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { calculateDeliveryMetrics } from './metrics/delivery-metrics';
 import { isSourceFresh } from './shared/data-freshness';
+import { potentialForecastStatus, forecastTooltip } from './forecast/dashboard-adapter';
 
 export function initDashboard() {'use strict';
 
@@ -1393,6 +1394,7 @@ export function initDashboard() {'use strict';
   window.addEventListener('xone-source-data', function (event) {
     var data = event.detail || {};
     var snapshot = data.snapshot;
+    var forecast = data.forecast;
     var jiraState = data.state && data.state.jira ? data.state.jira : null;
     var lastJiraSync = jiraState && jiraState.syncedAt || snapshot && snapshot.syncedAt;
     var jiraFresh = isSourceFresh(lastJiraSync);
@@ -1407,7 +1409,7 @@ export function initDashboard() {'use strict';
       VIEWS[view].off = ['—', 'historical data unavailable', 0];
       VIEWS[view].crit = ['—', 'historical data unavailable'];
       VIEWS[view].stuck = ['—', 'historical data unavailable'];
-      VIEWS[view].pot = ['—', 'historical data unavailable'];
+      VIEWS[view].pot = ['—', 'Forecast: ' + potentialForecastStatus(forecast)];
     });
     [
       peopleCapacityRisks,
@@ -1433,6 +1435,7 @@ export function initDashboard() {'use strict';
       updatedLabel.title = syncedAt && !Number.isNaN(syncedAt.getTime())
         ? (jiraCurrent ? 'Last successful Jira sync: ' : 'Last successful Jira sync (cached data not used): ') + syncedAt.toLocaleString() + (jiraState && jiraState.message ? '\n' + jiraState.message : '')
         : (jiraState && jiraState.message) || 'No successful Jira source sync has been recorded';
+      updatedLabel.title += '\n' + forecastTooltip(forecast);
       if (jiraState && jiraState.state === 'partial') {
         updatedLabel.title += '\nJira data is partial.';
       }

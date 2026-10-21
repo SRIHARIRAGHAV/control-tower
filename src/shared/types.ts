@@ -4,11 +4,13 @@ export interface JiraIssueSummary {
   key: string;
   summary: string;
   status: string;
+  statusCategory?: string;
   priority: string;
   project: string;
   updated: string;
   createdAt?: string;
   resolvedAt?: string;
+  reopenedAt?: string[];
   dueDate?: string;
   department?: string;
   impactedDepartment?: string;
@@ -28,6 +30,7 @@ export interface ConfluencePageSummary {
   title: string;
   space: string;
   url: string;
+  lastModified?: string;
 }
 
 export interface BitbucketCommitSummary {
@@ -38,12 +41,27 @@ export interface BitbucketCommitSummary {
   url: string;
 }
 
+export interface BitbucketPullRequestSummary {
+  id: string;
+  state: 'OPEN' | 'MERGED' | 'DECLINED';
+  createdAt: string;
+  updatedAt: string;
+  mergedAt?: string;
+}
+
+export interface BitbucketPipelineSummary {
+  createdAt: string;
+  result: 'SUCCESSFUL' | 'FAILED' | 'OTHER';
+}
+
 export interface BitbucketRepositorySummary {
   name: string;
   fullName: string;
   url: string;
   updated: string;
   recentCommits?: BitbucketCommitSummary[];
+  pullRequests?: BitbucketPullRequestSummary[];
+  pipelines?: BitbucketPipelineSummary[];
 }
 
 export interface SourceStatus {
@@ -52,6 +70,8 @@ export interface SourceStatus {
   syncedAt?: string;
   message: string;
   missingFields?: string[];
+  ambiguousFields?: string[];
+  resolvedFieldIds?: string[];
 }
 
 export interface XoneSnapshot {

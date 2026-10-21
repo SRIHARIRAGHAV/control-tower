@@ -23,8 +23,9 @@ interface JiraFieldDefinition {
   name: string;
 }
 
-async function fetchCustomFieldIds(): Promise<JiraCustomFieldIds> {
-  const response = await api.asUser().requestJira(route`/rest/api/3/field`, {
+async function fetchCustomFieldIds(requester: 'user' | 'app'): Promise<{ ids: JiraCustomFieldIds; ambiguous: string[] }> {
+  const jira = requester === 'app' ? api.asApp() : api.asUser();
+  const response = await jira.requestJira(route`/rest/api/3/field`, {
     headers: { Accept: 'application/json' },
   });
   if (!response.ok) {
@@ -36,20 +37,34 @@ async function fetchCustomFieldIds(): Promise<JiraCustomFieldIds> {
 
   const fields = (await response.json()) as JiraFieldDefinition[];
   const customFieldIds: JiraCustomFieldIds = {};
+  const ambiguous: string[] = [];
   for (const [key, name] of Object.entries(CUSTOM_FIELD_NAMES) as Array<[keyof JiraCustomFieldIds, string]>) {
     const matches = fields
       .filter((field) => field.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase())
       .sort((left, right) => Number(right.id.startsWith('customfield_')) - Number(left.id.startsWith('customfield_')));
-    const match = matches[0];
-    if (match) customFieldIds[key] = match.id;
+    if (matches.length > 1) {
+      ambiguous.push(name);
+    } else if (matches[0]) {
+      customFieldIds[key] = matches[0].id;
+    }
   }
-  return customFieldIds;
+  return { ids: customFieldIds, ambiguous };
 }
 
-export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>> {
+export async function fetchJiraIssues(requester: 'user' | 'app' = 'user'): Promise<SourceResult<JiraIssueSummary>> {
   const projectKey = process.env.JIRA_PROJECT_KEY?.trim();
+  if (requester === 'app' && !projectKey) {
+    return {
+      data: [],
+      status: {
+        state: 'not-configured',
+        count: 0,
+        message: 'Set the encrypted JIRA_PROJECT_KEY Forge variable for scheduled app-context Jira sync.',
+      },
+    };
+  }
   const jql = buildJiraSearchJql(projectKey);
-  const customFields = await fetchCustomFieldIds();
+  const { ids: customFields, ambiguous } = await fetchCustomFieldIds(requester);
   const missingFields = Object.entries(CUSTOM_FIELD_NAMES)
     .filter(([key]) => !customFields[key as keyof JiraCustomFieldIds])
     .map(([, name]) => name);
@@ -69,7 +84,8 @@ export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>>
   const seenPageTokens = new Set<string>();
 
   do {
-    const response = await api.asUser().requestJira(route`/rest/api/3/search/jql`, {
+    const jira = requester === 'app' ? api.asApp() : api.asUser();
+    const response = await jira.requestJira(route`/rest/api/3/search/jql`, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -105,8 +121,10 @@ export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>>
     status: {
       state: missingFields.length ? 'partial' : 'connected',
       count: data.length,
-      message: `Fetched ${data.length} unique Jira issues.${missingFields.length ? ` Jira fields not configured: ${missingFields.join(', ')}.` : ''}`,
+      message: `Fetched ${data.length} unique Jira issues.${missingFields.length ? ` Jira fields missing or ambiguous: ${missingFields.join(', ')}.` : ''}`,
       ...(missingFields.length ? { missingFields } : {}),
+      ...(ambiguous.length ? { ambiguousFields: ambiguous } : {}),
+      resolvedFieldIds: Object.values(customFields).filter((fieldId): fieldId is string => Boolean(fieldId)),
     },
   };
 }

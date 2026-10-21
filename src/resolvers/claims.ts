@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { recordWriteAttempt } from '../db/audit-log';
 import { addJiraComment, createJiraIssue } from '../services/jira-writer';
 import { resolver } from './registry';
+import { authorize } from './authorization';
 
 const createIssueSchema = z.object({
   projectKey: z.string().trim().min(1).max(20).regex(/^[A-Za-z][A-Za-z0-9_-]*$/),
@@ -13,12 +15,42 @@ const commentSchema = z.object({
   body: z.string().trim().min(1).max(10000),
 });
 
-resolver.define('createJiraIssue', async ({ payload }) => {
+resolver.define('createJiraIssue', async ({ payload, context }) => {
+  const actorAccountId = authorize(context, 'write');
   const input = createIssueSchema.parse(payload);
-  return createJiraIssue(input);
+  const timestamp = new Date().toISOString();
+  let outcome: 'success' | 'failure' = 'failure';
+  try {
+    const result = await createJiraIssue(input);
+    outcome = 'success';
+    return result;
+  } finally {
+    await recordWriteAttempt({
+      actorAccountId,
+      action: 'createJiraIssue',
+      target: input.projectKey,
+      timestamp,
+      outcome,
+    });
+  }
 });
 
-resolver.define('addJiraComment', async ({ payload }) => {
+resolver.define('addJiraComment', async ({ payload, context }) => {
+  const actorAccountId = authorize(context, 'write');
   const input = commentSchema.parse(payload);
-  return addJiraComment(input);
+  const timestamp = new Date().toISOString();
+  let outcome: 'success' | 'failure' = 'failure';
+  try {
+    const result = await addJiraComment(input);
+    outcome = 'success';
+    return result;
+  } finally {
+    await recordWriteAttempt({
+      actorAccountId,
+      action: 'addJiraComment',
+      target: input.issueKey,
+      timestamp,
+      outcome,
+    });
+  }
 });

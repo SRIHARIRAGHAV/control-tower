@@ -9,7 +9,7 @@ export interface JiraSearchResponse {
     key: string;
     fields?: {
       summary?: string;
-      status?: { name?: string };
+      status?: { name?: string; statusCategory?: { key?: string } };
       priority?: { name?: string };
       project?: { name?: string };
       updated?: string;
@@ -42,6 +42,7 @@ export interface ConfluencePagesResponse {
     id: string;
     title: string;
     spaceId?: string;
+    version?: { createdAt?: string };
     _links?: { webui?: string };
   }>;
   _links?: { next?: string };
@@ -65,6 +66,24 @@ export interface BitbucketCommitsResponse {
     author?: { raw?: string };
     links?: { html?: { href?: string } };
   }>;
+}
+
+export interface BitbucketPullRequestsResponse {
+  values?: Array<{
+    id: number;
+    state: string;
+    created_on?: string;
+    updated_on?: string;
+  }>;
+  next?: string;
+}
+
+export interface BitbucketPipelinesResponse {
+  values?: Array<{
+    created_on?: string;
+    state?: { result?: { name?: string } };
+  }>;
+  next?: string;
 }
 
 function normalizeText(value: unknown): string | undefined {
@@ -134,6 +153,7 @@ export function mapJiraIssues(body: JiraSearchResponse, customFields: JiraCustom
     key: issue.key,
     summary: issue.fields?.summary ?? '',
     status: normalizeJiraStatus(issue.fields?.status?.name),
+    statusCategory: issue.fields?.status?.statusCategory?.key,
     priority: normalizePriority(issue.fields?.priority?.name),
     project: issue.fields?.project?.name ?? 'Unknown',
     updated: issue.fields?.updated ?? '',
@@ -162,6 +182,7 @@ export function mapConfluencePages(body: ConfluencePagesResponse): ConfluencePag
     title: page.title,
     space: page.spaceId ?? 'Unknown',
     url: page._links?.webui ?? '',
+    lastModified: normalizeDate(page.version?.createdAt),
   }));
 }
 
@@ -182,4 +203,30 @@ export function mapBitbucketCommits(body: BitbucketCommitsResponse): NonNullable
     date: commit.date ?? '',
     url: commit.links?.html?.href ?? '',
   }));
+}
+
+export function mapBitbucketPullRequests(
+  body: BitbucketPullRequestsResponse,
+): NonNullable<BitbucketRepositorySummary['pullRequests']> {
+  return (body.values ?? []).flatMap((pullRequest) => {
+    if (!['OPEN', 'MERGED', 'DECLINED'].includes(pullRequest.state)) return [];
+    return [{
+      id: String(pullRequest.id),
+      state: pullRequest.state as 'OPEN' | 'MERGED' | 'DECLINED',
+      createdAt: pullRequest.created_on ?? '',
+      updatedAt: pullRequest.updated_on ?? '',
+    }];
+  });
+}
+
+export function mapBitbucketPipelines(
+  body: BitbucketPipelinesResponse,
+): NonNullable<BitbucketRepositorySummary['pipelines']> {
+  return (body.values ?? []).map((pipeline) => {
+    const result = pipeline.state?.result?.name?.toUpperCase();
+    return {
+      createdAt: pipeline.created_on ?? '',
+      result: result === 'SUCCESSFUL' ? 'SUCCESSFUL' : result === 'FAILED' ? 'FAILED' : 'OTHER',
+    };
+  });
 }
