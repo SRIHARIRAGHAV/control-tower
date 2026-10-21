@@ -1,17 +1,14 @@
-import { readRiskForecast, readSnapshot, readSyncState, writeSyncResult } from '../db/client';
+import { readSnapshot, readSyncState, writeSyncResult } from '../db/client';
 import { buildRiskForecast } from '../forecast/risk-forecast';
 import { synchronizeSources } from './worker';
 
 export async function syncAndStore() {
-  const [previous, previousState, previousForecast] = await Promise.all([
+  const [previous, previousState] = await Promise.all([
     readSnapshot(),
     readSyncState(),
-    readRiskForecast(),
   ]);
   const result = await synchronizeSources(previous, previousState);
-  const anySourceConnected = [result.state.jira, result.state.confluence, result.state.bitbucket]
-    .some((source) => source.state === 'connected');
-  const forecast = anySourceConnected
+  const forecast = (result.state.jira.state === 'connected' || result.state.jira.state === 'partial')
     ? buildRiskForecast({
         issues: result.snapshot.jiraIssues.map((issue) => ({
           key: issue.key,
@@ -25,10 +22,14 @@ export async function syncAndStore() {
           dueDate: issue.dueDate,
           resolvedAt: issue.resolvedAt,
         })),
-        repos: result.snapshot.bitbucketRepositories.map((repository) => ({ fullName: repository.fullName })),
-        pages: result.snapshot.confluencePages.map((page) => ({ title: page.title })),
+        repos: (result.state.bitbucket.state === 'connected' || result.state.bitbucket.state === 'partial')
+          ? result.snapshot.bitbucketRepositories.map((repository) => ({ fullName: repository.fullName }))
+          : [],
+        pages: (result.state.confluence.state === 'connected' || result.state.confluence.state === 'partial')
+          ? result.snapshot.confluencePages.map((page) => ({ title: page.title }))
+          : [],
       })
-    : previousForecast ?? undefined;
+    : undefined;
   await writeSyncResult(result.snapshot, result.state, forecast);
   return { ...result, ...(forecast ? { forecast } : {}) };
 }

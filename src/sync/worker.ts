@@ -27,8 +27,12 @@ function withLastSuccess(
 ): SourceStatus {
   return {
     ...current,
-    syncedAt: current.state === 'connected' ? syncedAt : previous?.syncedAt,
+    syncedAt: current.state === 'connected' || current.state === 'partial' ? syncedAt : previous?.syncedAt,
   };
+}
+
+function hasCurrentData(status: SourceStatus): boolean {
+  return status.state === 'connected' || status.state === 'partial';
 }
 
 export async function synchronizeSources(
@@ -44,11 +48,10 @@ export async function synchronizeSources(
 
   return {
     snapshot: {
-      jiraIssues: jira.status.state === 'connected' ? jira.data : previous?.jiraIssues ?? [],
-      confluencePages: confluence.status.state === 'connected' ? confluence.data : previous?.confluencePages ?? [],
-      bitbucketRepositories:
-        bitbucket.status.state === 'connected' ? bitbucket.data : previous?.bitbucketRepositories ?? [],
-      syncedAt: jira.status.state === 'connected' ? syncedAt : previous?.syncedAt ?? '',
+      jiraIssues: hasCurrentData(jira.status) ? jira.data : previous?.jiraIssues ?? [],
+      confluencePages: hasCurrentData(confluence.status) ? confluence.data : previous?.confluencePages ?? [],
+      bitbucketRepositories: hasCurrentData(bitbucket.status) ? bitbucket.data : previous?.bitbucketRepositories ?? [],
+      syncedAt: hasCurrentData(jira.status) ? syncedAt : previous?.syncedAt ?? '',
     },
     state: {
       jira: withLastSuccess(jira.status, previousState?.jira, syncedAt),

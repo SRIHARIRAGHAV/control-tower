@@ -47,10 +47,11 @@ export interface BitbucketRepositorySummary {
 }
 
 export interface SourceStatus {
-  state: 'connected' | 'not-configured' | 'error' | 'not-synced';
+  state: 'connected' | 'partial' | 'not-configured' | 'error' | 'not-synced';
   count: number;
   syncedAt?: string;
   message: string;
+  missingFields?: string[];
 }
 
 export interface XoneSnapshot {

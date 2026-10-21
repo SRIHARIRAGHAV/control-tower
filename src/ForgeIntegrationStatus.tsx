@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { DashboardDataResponse } from './shared/types';
+import { isSourceFresh } from './shared/data-freshness';
 import { getDashboardData, syncNow } from './frontend/services/forge-api';
 
 function publishDashboardData(data: DashboardDataResponse) {
@@ -8,6 +9,21 @@ function publishDashboardData(data: DashboardDataResponse) {
 
 function errorMessage(reason: unknown, fallback: string): string {
   return reason instanceof Error ? reason.message : fallback;
+}
+
+function failedSyncData(previous: DashboardDataResponse | null, message: string): DashboardDataResponse {
+  const failedState = (source: DashboardDataResponse['state']['jira']) => source.state === 'not-configured'
+    ? source
+    : { ...source, state: 'error' as const, count: 0, message };
+  return {
+    snapshot: previous?.snapshot ?? null,
+    state: {
+      jira: failedState(previous?.state.jira ?? { state: 'not-synced', count: 0, message }),
+      confluence: failedState(previous?.state.confluence ?? { state: 'not-synced', count: 0, message }),
+      bitbucket: failedState(previous?.state.bitbucket ?? { state: 'not-synced', count: 0, message }),
+      ...(previous?.state.syncedAt ? { syncedAt: previous.state.syncedAt } : {}),
+    },
+  };
 }
 
 export default function ForgeIntegrationStatus() {
@@ -71,29 +87,48 @@ export default function ForgeIntegrationStatus() {
       publishDashboardData(result);
     } catch (reason) {
       setError(errorMessage(reason, 'Jira synchronization failed.'));
+      const failed = failedSyncData(data, errorMessage(reason, 'Source synchronization failed.'));
+      setData(failed);
+      publishDashboardData(failed);
     } finally {
       setSyncing(false);
     }
   }
 
-  const jiraStatus = data?.state.jira;
   const jiraIssueCount = data?.snapshot?.jiraIssues.length ?? 0;
-  const syncError = error || (jiraStatus?.state === 'error' ? jiraStatus.message : '');
+  const sources = [
+    ['Jira', data?.state.jira],
+    ['Confluence', data?.state.confluence],
+    ['Bitbucket', data?.state.bitbucket],
+  ] as const;
+  const syncError = error || sources
+    .filter(([, source]) => source?.state === 'error')
+    .map(([, source]) => source?.message)
+    .filter(Boolean)
+    .join(' · ');
+  const sourceStatusText = sources
+    .map(([name, source]) => {
+      const syncedAt = source?.syncedAt ?? (name === 'Jira' ? data?.snapshot?.syncedAt : undefined);
+      const stale = source && (source.state === 'connected' || source.state === 'partial') && !isSourceFresh(syncedAt);
+      const state = stale ? 'stale' : source?.state ?? 'not-synced';
+      return `${name} ${state}${source ? ` (${source.count})` : ''}`;
+    })
+    .join(' · ');
+  const sourceStatusDetails = sources
+    .map(([name, source]) => {
+      const syncedAt = source?.syncedAt ?? (name === 'Jira' ? data?.snapshot?.syncedAt : undefined);
+      return `${name}: ${source?.message ?? 'Status unavailable'}${syncedAt ? ` Last successful sync: ${new Date(syncedAt).toLocaleString()}.` : ''}`;
+    })
+    .join('\n');
   const statusText = loading
-    ? 'Loading Jira data…'
+    ? 'Loading source data…'
     : error
-      ? 'Jira data unavailable'
-      : jiraStatus?.state === 'error'
-        ? `Jira sync failed · showing ${jiraIssueCount} cached issues`
-        : jiraStatus?.state === 'not-configured'
-          ? 'Jira is not configured'
-          : jiraStatus?.state === 'not-synced'
-            ? 'Jira has not synced'
-            : `${jiraIssueCount} Jira issues`;
+      ? 'Source data unavailable'
+      : sourceStatusText || `${jiraIssueCount} Jira issues`;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-      <span role="status" aria-live="polite">
+      <span role="status" aria-live="polite" title={sourceStatusDetails}>
         {statusText}
       </span>
       <button

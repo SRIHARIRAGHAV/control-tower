@@ -30,7 +30,7 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
 
   let nextUrl: string | undefined =
     `https://api.bitbucket.org/2.0/repositories/${encodeURIComponent(workspace)}?pagelen=100&sort=-updated_on`;
-  const data: BitbucketRepositorySummary[] = [];
+  const repositoriesByName = new Map<string, BitbucketRepositorySummary>();
   const seenPageUrls = new Set<string>();
 
   while (nextUrl) {
@@ -52,10 +52,13 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
         redact: [token, clientId, clientSecret],
       },
     );
-    data.push(...mapBitbucketRepositories(body));
+    for (const repository of mapBitbucketRepositories(body)) {
+      repositoriesByName.set(repository.fullName, repository);
+    }
     nextUrl = body.next;
   }
 
+  const data = [...repositoriesByName.values()];
   for (const repository of data) {
     const repositoryPath = repository.fullName.split('/').map(encodeURIComponent).join('/');
     const commitsUrl = new URL(
@@ -86,7 +89,7 @@ export async function fetchBitbucketRepositories(): Promise<SourceResult<Bitbuck
     status: {
       state: 'connected',
       count: data.length,
-      message: `Fetched ${data.length} Bitbucket repositories and ${commitCount} recent commits.`,
+      message: `Fetched ${data.length} unique Bitbucket repositories and ${commitCount} recent commits; pull requests, builds, and deployments were not retrieved.`,
     },
   };
 }

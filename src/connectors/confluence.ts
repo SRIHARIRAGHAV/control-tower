@@ -5,7 +5,7 @@ import { readProviderErrorDetail } from './http';
 
 export async function fetchConfluencePages(): Promise<SourceResult<ConfluencePageSummary>> {
   const pageSize = 100;
-  const data: ConfluencePageSummary[] = [];
+  const pagesById = new Map<string, ConfluencePageSummary>();
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
 
@@ -28,7 +28,7 @@ export async function fetchConfluencePages(): Promise<SourceResult<ConfluencePag
 
     const body = (await response.json()) as ConfluencePagesResponse;
     const pages = mapConfluencePages(body);
-    data.push(...pages);
+    for (const page of pages) pagesById.set(page.id, page);
     const next = body._links?.next;
     if (!next || pages.length === 0) break;
     const nextCursor = new URL(next, 'https://confluence.invalid').searchParams.get('cursor');
@@ -39,8 +39,9 @@ export async function fetchConfluencePages(): Promise<SourceResult<ConfluencePag
     cursor = nextCursor;
   }
 
+  const data = [...pagesById.values()];
   return {
     data,
-    status: { state: 'connected', count: data.length, message: `Fetched ${data.length} Confluence pages.` },
+    status: { state: 'connected', count: data.length, message: `Fetched metadata for ${data.length} unique Confluence pages; page content was not analyzed.` },
   };
 }

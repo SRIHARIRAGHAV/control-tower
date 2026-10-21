@@ -50,6 +50,9 @@ export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>>
   const projectKey = process.env.JIRA_PROJECT_KEY?.trim();
   const jql = buildJiraSearchJql(projectKey);
   const customFields = await fetchCustomFieldIds();
+  const missingFields = Object.entries(CUSTOM_FIELD_NAMES)
+    .filter(([key]) => !customFields[key as keyof JiraCustomFieldIds])
+    .map(([, name]) => name);
   const requestedFields = [
     'summary',
     'status',
@@ -61,7 +64,7 @@ export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>>
     'duedate',
     ...Object.values(customFields).filter((fieldId): fieldId is string => Boolean(fieldId)),
   ];
-  const data: JiraIssueSummary[] = [];
+  const issuesByKey = new Map<string, JiraIssueSummary>();
   let nextPageToken: string | undefined;
   const seenPageTokens = new Set<string>();
 
@@ -84,7 +87,10 @@ export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>>
     }
 
     const body = (await response.json()) as JiraSearchResponse;
-    data.push(...mapJiraIssues(body, customFields));
+    for (const issue of mapJiraIssues(body, customFields)) {
+      const existing = issuesByKey.get(issue.key);
+      if (!existing || issue.updated >= existing.updated) issuesByKey.set(issue.key, issue);
+    }
     if (body.isLast || !body.nextPageToken) break;
     if (seenPageTokens.has(body.nextPageToken)) {
       throw new Error('Jira returned a repeated pagination token; stopping sync to avoid an infinite loop.');
@@ -93,8 +99,14 @@ export async function fetchJiraIssues(): Promise<SourceResult<JiraIssueSummary>>
     nextPageToken = body.nextPageToken;
   } while (nextPageToken);
 
+  const data = [...issuesByKey.values()];
   return {
     data,
-    status: { state: 'connected', count: data.length, message: `Fetched ${data.length} Jira issues.` },
+    status: {
+      state: missingFields.length ? 'partial' : 'connected',
+      count: data.length,
+      message: `Fetched ${data.length} unique Jira issues.${missingFields.length ? ` Jira fields not configured: ${missingFields.join(', ')}.` : ''}`,
+      ...(missingFields.length ? { missingFields } : {}),
+    },
   };
 }

@@ -8,6 +8,46 @@
 Open http://localhost:5173. Run `npm run build` to type-check and build the
 Forge static resource into `forge-dist/`.
 
+Run `npm test` for the delivery-metric calculation tests.
+
+## Live-data scope and metric rules
+
+The live dashboard starts with no sample company data. It uses the latest Jira
+snapshot only when the latest Jira sync succeeded; if Jira sync fails, cached
+issues are hidden from current metrics and the previous successful sync time
+remains available in the source-status details. Data older than two hours is
+also marked stale and excluded from current metrics. A Jira source can be marked
+partial when named custom fields are not configured. Source status includes
+record counts, sync errors, timestamps, and the missing Jira fields.
+
+Current Jira calculations use these rules:
+
+- The priority score is `(normal/moderate + 0.5 × high) / known-priority issues`
+  expressed as a percentage. Critical issues contribute zero; issues with
+  unknown priority are excluded and counted as unrated. This is a rule-based
+  score, not a forecast or a configured company target.
+- On-time delivery uses resolved Jira issues with both a due date and
+  resolution date in the last 30 calendar days. A resolution on or before the
+  due date is on time. The dashboard shows `Unavailable` when that denominator
+  is empty.
+- Overdue and upcoming counts use Jira due dates and current open status.
+  Upcoming due dates are not labeled as predicted risks.
+- Blocked issues are identified from Jira status. The aging measure is elapsed
+  time since issue creation; blocker duration is unavailable because changelog
+  history is not retrieved.
+- Cross-department labels use the Jira `Department` and `Impacted department`
+  fields. They do not prove a dependency or handoff. Approval records use the
+  `COO decision` and `COO approver` fields; approval age and deadlines are not
+  available.
+
+Jira release/milestone data, issue-link dependencies, priority-change history,
+and financial exposure are not currently retrieved. Bitbucket provides
+repository and recent-commit metadata, not pull requests, builds, or
+deployments. Confluence provides page metadata; page content is not analyzed.
+Historical snapshots, validated probability models, a finance integration,
+and live generative AI are not available. The dashboard therefore marks those
+metrics or recommendations unavailable instead of filling them with examples.
+
 ## Deploy to Jira
 
 Install and authenticate the Atlassian Forge CLI, then run:
