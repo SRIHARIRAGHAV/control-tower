@@ -1,4 +1,4 @@
-export type AccessRole = 'executive' | 'operator' | 'admin';
+export type AccessRole = 'user';
 export type AccessAction = 'VIEW' | 'SYNC' | 'WRITE' | 'ADMIN';
 
 export interface AuthenticatedUser {
@@ -28,24 +28,10 @@ export class AccessError extends Error {
   }
 }
 
-type Environment = { process?: { env?: Record<string, string | undefined> } };
-
-function configuredIds(name: string): Set<string> {
-  const env = (globalThis as typeof globalThis & Environment).process?.env;
-  return new Set((env?.[name] ?? '').split(',').map((value) => value.trim()).filter(Boolean));
-}
-
 function accountIdFromContext(context: unknown): string | undefined {
   if (!context || typeof context !== 'object' || !('accountId' in context)) return undefined;
   const accountId = context.accountId;
   return typeof accountId === 'string' && accountId.trim() ? accountId.trim() : undefined;
-}
-
-function roleFor(accountId: string): AccessRole | null {
-  if (configuredIds('CONTROL_TOWER_ADMIN_ACCOUNT_IDS').has(accountId)) return 'admin';
-  if (configuredIds('CONTROL_TOWER_OPERATOR_ACCOUNT_IDS').has(accountId)) return 'operator';
-  if (configuredIds('CONTROL_TOWER_EXECUTIVE_ACCOUNT_IDS').has(accountId)) return 'executive';
-  return null;
 }
 
 export function getAuthenticatedUser(context: unknown): AuthenticatedUser {
@@ -54,29 +40,25 @@ export function getAuthenticatedUser(context: unknown): AuthenticatedUser {
   return { accountId };
 }
 
-function roleAllowsAction(role: AccessRole, action: AccessAction): boolean {
+function actionIsAvailable(action: AccessAction): boolean {
   switch (action) {
     case 'VIEW':
     case 'SYNC':
-      return true;
     case 'WRITE':
-      return role === 'operator' || role === 'admin';
+      return true;
     case 'ADMIN':
-      return role === 'admin';
+      return false;
   }
 }
 
 export function authorize(context: unknown, action: AccessAction): AuthorizedUser {
   const user = getAuthenticatedUser(context);
-  const role = roleFor(user.accountId);
-  if (!role) throw new AccessError('AUTHORIZATION_DENIED');
-  if (!roleAllowsAction(role, action)) throw new AccessError('AUTHORIZATION_DENIED');
-  return { ...user, role };
+  if (!actionIsAvailable(action)) throw new AccessError('AUTHORIZATION_DENIED');
+  return { ...user, role: 'user' };
 }
 
 export function accessStatus(context: unknown): AccessStatus {
-  const accountId = accountIdFromContext(context);
-  if (!accountId) {
+  if (!accountIdFromContext(context)) {
     return {
       authenticated: false,
       authorized: false,
@@ -86,22 +68,11 @@ export function accessStatus(context: unknown): AccessStatus {
       code: 'AUTHENTICATION_REQUIRED',
     };
   }
-  const role = roleFor(accountId);
-  if (!role) {
-    return {
-      authenticated: true,
-      authorized: false,
-      role: null,
-      canSync: false,
-      canWrite: false,
-      code: 'AUTHORIZATION_DENIED',
-    };
-  }
   return {
     authenticated: true,
     authorized: true,
-    role,
+    role: 'user',
     canSync: true,
-    canWrite: role === 'operator' || role === 'admin',
+    canWrite: true,
   };
 }

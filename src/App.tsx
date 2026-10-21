@@ -51,7 +51,9 @@ export default function App() {
         <p>
           {access.code === 'AUTH_STATUS_UNAVAILABLE'
             ? 'Unable to verify Jira access right now. Refresh the page or contact your app administrator.'
-            : 'Your Jira account is not authorized to use Control Tower. Contact your app administrator if you need access.'}
+            : access.code === 'AUTHENTICATION_REQUIRED'
+              ? 'Sign in to Jira to access Control Tower.'
+              : 'Your Jira account is not authorized to use Control Tower. Contact your app administrator if you need access.'}
         </p>
       </main>
     );

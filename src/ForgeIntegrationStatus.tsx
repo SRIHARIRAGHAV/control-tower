@@ -150,7 +150,7 @@ export default function ForgeIntegrationStatus({ canSync }: { canSync: boolean }
         onClick={refresh}
         disabled={!canSync || loading || syncing}
         aria-label="Synchronize Jira and connected sources"
-        title={canSync ? undefined : 'Your account does not have the operator role'}
+        title={canSync ? undefined : 'Sync is unavailable'}
       >
         {syncing ? 'Syncing…' : 'Sync'}
       </button>

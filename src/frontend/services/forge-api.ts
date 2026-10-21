@@ -18,7 +18,7 @@ export function getAuthStatus(): Promise<AuthStatusResponse> {
     return Promise.resolve({
       authenticated: true,
       authorized: true,
-      role: 'operator',
+      role: 'user',
       canSync: true,
       canWrite: false,
     });

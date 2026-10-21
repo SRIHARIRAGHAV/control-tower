@@ -81,7 +81,7 @@ export interface DashboardDataResponse {
 export interface AuthStatusResponse {
   authenticated: boolean;
   authorized: boolean;
-  role: 'executive' | 'operator' | 'admin' | null;
+  role: 'user' | null;
   canSync: boolean;
   canWrite: boolean;
   code?: 'AUTHENTICATION_REQUIRED' | 'AUTHORIZATION_DENIED' | 'AUTH_STATUS_UNAVAILABLE';

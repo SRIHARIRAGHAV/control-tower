@@ -7,7 +7,7 @@
 
 Open http://localhost:5173. Vite development mode uses **clearly labelled synthetic demo fixtures** by default, so the dashboard can be demonstrated without an Atlassian session or credentials. The fixtures are not live company data and must never be used for business decisions. The Sync button refreshes the local fixture response; it does not call Jira, Confluence, or Bitbucket.
 
-To turn off local demo mode, set `VITE_DEMO_MODE=false` in your local environment and run the app inside the configured Forge context. The live connectors use Forge APIs and are not a standalone local REST integration. Local Vite mode cannot validate Atlassian authentication, Forge storage, scheduled triggers, role allowlists, or provider scopes.
+To turn off local demo mode, set `VITE_DEMO_MODE=false` in your local environment and run the app inside the configured Forge context. The live connectors use Forge APIs and are not a standalone local REST integration. Local Vite mode cannot validate Atlassian authentication, Forge storage, scheduled triggers, or provider scopes.
 
 Run `npm run build` to type-check and build the Forge static resource into `forge-dist/`. Run `npm test` for freshness, metric, and deterministic forecast tests.
 
@@ -58,32 +58,25 @@ Install and authenticate the Atlassian Forge CLI, then run:
 
 The deployment builds the React dashboard first and packages it with the Forge
 resolvers and Jira/Confluence/Bitbucket sync handlers. `npm run forge:install`
-is for installing the app on a Jira site after the first deployment. The
-unused `read:jira-user` scope has been removed; Forge requires a major-version
-upgrade approval when deploying this scope reduction.
+is for installing the app on a Jira site after the first deployment.
 
 ## Access-control configuration
 
 The Forge resolver context is the only source of the current account ID; the
-frontend cannot supply or override the identity. View access is limited to
-allowlisted executives, operators, or administrators. Those users can trigger
-a sync that calls Jira and Confluence as the current user, so provider
-permissions still apply. User-triggered snapshots are isolated per Atlassian
-account. The scheduled sync runs as the app and stores a separate snapshot
-which is not returned by user-facing resolvers. Jira write actions use the
-current user and require the operator or administrator role.
+frontend cannot supply or override the identity. Any signed-in Jira user who
+can open the installed app may view the dashboard and trigger a sync. Jira and
+Confluence requests run as that user, so each user's provider permissions
+still apply. User-triggered snapshots are isolated per Atlassian account. The
+scheduled sync runs as the app and stores a separate snapshot which is not
+returned by user-facing resolvers. Jira write actions run as the current user;
+Jira enforces that user's project and issue permissions.
 
-Configure comma-separated Atlassian account IDs as Forge environment
-variables. Empty allowlists deny access:
-
-- `CONTROL_TOWER_EXECUTIVE_ACCOUNT_IDS`: dashboard view and user-context sync.
-- `CONTROL_TOWER_OPERATOR_ACCOUNT_IDS`: view, sync, and Jira write operations.
-- `CONTROL_TOWER_ADMIN_ACCOUNT_IDS`: all current operations and reserved admin actions.
-
-Set the variables in the Forge environment, not in frontend variables or
-committed files. Configure `JIRA_PROJECT_KEY` in Forge for scheduled
-app-context Jira sync; it is never accepted from a browser request. Local demo
-mode is synthetic and does not exercise Forge authentication or authorization.
+The Forge app must be deployed and installed by a Forge administrator. This
+does not bypass the Jira site's normal sign-in, site access, project
+permissions, or app availability policies. Configure `JIRA_PROJECT_KEY` in
+Forge for scheduled app-context Jira sync; it is never accepted from a browser
+request. Local demo mode is synthetic and does not exercise Forge
+authentication or Jira permissions.
 
 ## AI service configuration
 
