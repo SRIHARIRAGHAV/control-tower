@@ -618,3 +618,17 @@ main.page.swipe{display:block;padding:0}                       /* #app becomes t
   .deck .depts>*{flex:0 0 82%;scroll-snap-align:start}
 }
 .pair>:only-child{grid-column:1/-1}   /* a lone card in the pair row takes the full width */
+
+
+/* Backend deterministic forecast summary. Hidden until a valid response arrives. */
+.forecast-summary { margin: 14px 24px 0; padding: 14px 16px; border: 1px solid var(--grid, #d9dee7); border-radius: 12px; background: var(--card, #fff); color: var(--ink, #182230); }
+.forecast-summary[hidden] { display: none; }
+.forecast-summary .forecast-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.forecast-summary .forecast-head h2 { font-size: 14px; margin: 0; }
+.forecast-summary .forecast-meta { color: var(--muted, #667085); font-size: 11px; }
+.forecast-summary .forecast-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.forecast-summary .forecast-cell { border-radius: 8px; background: var(--surface, #f7f8fa); padding: 10px; min-width: 0; }
+.forecast-summary .forecast-cell b { display: block; font-size: 12px; margin-bottom: 4px; }
+.forecast-summary .forecast-cell p { margin: 0; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.forecast-summary .forecast-note { margin: 10px 0 0; color: var(--muted, #667085); font-size: 11px; }
+@media (max-width: 760px) { .forecast-summary { margin: 10px 12px 0; } .forecast-summary .forecast-grid { grid-template-columns: 1fr; } }

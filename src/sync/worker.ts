@@ -38,10 +38,10 @@ function hasCurrentData(status: SourceStatus): boolean {
 export async function synchronizeSources(
   previous: XoneSnapshot | null,
   previousState: SyncState | null,
-  requester: 'user' | 'app' = 'user',
+  options: { jiraExecutionContext?: 'user' | 'app' } = {},
 ): Promise<{ snapshot: XoneSnapshot; state: SyncState }> {
   const [jira, confluence, bitbucket] = await Promise.all([
-    runSource('Jira', () => fetchJiraIssues(requester)),
+    runSource('Jira', () => fetchJiraIssues(options.jiraExecutionContext ?? 'user')),
     runSource('Confluence', fetchConfluencePages),
     runSource('Bitbucket', fetchBitbucketRepositories),
   ]);

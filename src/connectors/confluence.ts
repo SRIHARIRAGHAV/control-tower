@@ -13,6 +13,7 @@ export async function fetchConfluencePages(): Promise<SourceResult<ConfluencePag
     const query = new URLSearchParams({
       limit: String(pageSize),
       sort: '-modified-date',
+      status: 'current',
       ...(cursor ? { cursor } : {}),
     });
     const response = await api.asApp().requestConfluence(

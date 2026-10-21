@@ -1,14 +1,15 @@
 # Control Tower dashboard (interactive)
 
-## Local development
+## Local development and demo mode
 
-    npm install
+    npm ci
     npm run dev
 
-Open http://localhost:5173. Run `npm run build` to type-check and build the
-Forge static resource into `forge-dist/`.
+Open http://localhost:5173. Vite development mode uses **clearly labelled synthetic demo fixtures** by default, so the dashboard can be demonstrated without an Atlassian session or credentials. The fixtures are not live company data and must never be used for business decisions. The Sync button refreshes the local fixture response; it does not call Jira, Confluence, or Bitbucket.
 
-Run `npm test` for the delivery-metric calculation tests.
+To turn off local demo mode, set `VITE_DEMO_MODE=false` in your local environment and run the app inside the configured Forge context. The live connectors use Forge APIs and are not a standalone local REST integration. Local Vite mode cannot validate Atlassian authentication, Forge storage, scheduled triggers, role allowlists, or provider scopes.
+
+Run `npm run build` to type-check and build the Forge static resource into `forge-dist/`. Run `npm test` for freshness, metric, and deterministic forecast tests.
 
 ## Live-data scope and metric rules
 
@@ -58,6 +59,15 @@ Install and authenticate the Atlassian Forge CLI, then run:
 The deployment builds the React dashboard first and packages it with the Forge
 resolvers and Jira/Confluence/Bitbucket sync handlers. `npm run forge:install`
 is for installing the app on a Jira site after the first deployment.
+
+## Access-control configuration
+
+The intended Forge role policy uses comma-separated Atlassian account IDs in encrypted Forge environment variables:
+
+- `CONTROL_TOWER_EXECUTIVE_ACCOUNT_IDS`: users allowed to view executive dashboard data.
+- `CONTROL_TOWER_OPERATOR_ACCOUNT_IDS`: users allowed to synchronize sources and perform Jira write actions.
+
+Configure these only in the Forge environment, not in frontend variables or committed files. If the allowlists are not configured, role-protected operations are denied. Local demo mode is read-only and does not exercise the Forge authorization policy.
 
 ## AI service configuration
 

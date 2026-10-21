@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "test": "node --test",
+    "test": "node --experimental-strip-types --test",
     "preview": "vite preview --host",
     "forge:tunnel": "forge tunnel",
     "forge:lint": "forge lint",

@@ -1,18 +1,15 @@
-import { z } from 'zod';
 import { syncSources } from '../backend/handlers/source-handlers';
+import { syncAndStore } from '../sync/snapshot';
 import { resolver } from './registry';
-import { authorize } from './authorization';
+import { requireRole } from './authorization';
 
-const emptyPayloadSchema = z.object({}).strict();
-
-resolver.define('syncNow', ({ payload, context }) => {
-  authorize(context, 'sync');
-  emptyPayloadSchema.parse(payload ?? {});
-  return syncSources('user');
+resolver.define('syncNow', async ({ context }) => {
+  requireRole(context, 'operator');
+  return syncSources();
 });
 
 export async function hourlySync() {
-  const result = await syncSources('app');
+  const result = await syncAndStore({ jiraExecutionContext: 'app' });
   if ([result.state.jira, result.state.confluence, result.state.bitbucket].every(
     (source) => source.state === 'error' || source.state === 'not-configured',
   )) {

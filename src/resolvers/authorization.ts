@@ -1,19 +1,22 @@
-export interface ResolverContext {
-  accountId?: unknown;
+type Role = 'executive' | 'operator';
+type ResolverContext = { accountId?: string | null };
+
+type Environment = { process?: { env?: Record<string, string | undefined> } };
+
+function configuredIds(name: string): Set<string> {
+  const env = (globalThis as typeof globalThis & Environment).process?.env;
+  return new Set((env?.[name] ?? '').split(',').map((value) => value.trim()).filter(Boolean));
 }
 
-export type ResolverAction = 'view' | 'sync' | 'write';
+export function requireRole(context: ResolverContext | undefined, role: Role): void {
+  const accountId = context?.accountId?.trim();
+  if (!accountId) throw new Error('Access denied: authenticated Atlassian account context is required.');
 
-export function authorize(context: ResolverContext, action: ResolverAction): string {
-  const accountId = typeof context.accountId === 'string' ? context.accountId.trim() : '';
-  if (!accountId) throw new Error('Authentication is required to access this resolver.');
+  const executives = configuredIds('CONTROL_TOWER_EXECUTIVE_ACCOUNT_IDS');
+  const operators = configuredIds('CONTROL_TOWER_OPERATOR_ACCOUNT_IDS');
+  const allowed = role === 'executive'
+    ? executives.has(accountId) || operators.has(accountId)
+    : operators.has(accountId);
 
-  const allowlist = (process.env.CONTROL_TOWER_ALLOWED_ACCOUNT_IDS ?? '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (allowlist.length && !allowlist.includes(accountId)) {
-    throw new Error(`Access denied for resolver action: ${action}.`);
-  }
-  return accountId;
+  if (!allowed) throw new Error(`Access denied: the ${role} role is required for this operation.`);
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DashboardDataResponse } from './shared/types';
 import { isSourceFresh } from './shared/data-freshness';
-import { getDashboardData, syncNow } from './frontend/services/forge-api';
+import { getDashboardData, isLocalDemoMode, syncNow } from './frontend/services/forge-api';
 
 function publishDashboardData(data: DashboardDataResponse) {
   window.dispatchEvent(new CustomEvent('xone-source-data', { detail: data }));
@@ -106,33 +106,29 @@ export default function ForgeIntegrationStatus() {
     .map(([, source]) => source?.message)
     .filter(Boolean)
     .join(' · ');
-  const sourceStatusDetails = sources
+  const sourceStatusText = sources
     .map(([name, source]) => {
       const syncedAt = source?.syncedAt ?? (name === 'Jira' ? data?.snapshot?.syncedAt : undefined);
       const stale = source && (source.state === 'connected' || source.state === 'partial') && !isSourceFresh(syncedAt);
       const state = stale ? 'stale' : source?.state ?? 'not-synced';
-      return `${name}: ${state}${source ? ` (${source.count})` : ''}. ${source?.message ?? 'Status unavailable'}${syncedAt ? ` Last successful sync: ${new Date(syncedAt).toLocaleString()}.` : ''}`;
+      return `${name} ${state}${source ? ` (${source.count})` : ''}`;
+    })
+    .join(' · ');
+  const sourceStatusDetails = sources
+    .map(([name, source]) => {
+      const syncedAt = source?.syncedAt ?? (name === 'Jira' ? data?.snapshot?.syncedAt : undefined);
+      return `${name}: ${source?.message ?? 'Status unavailable'}${syncedAt ? ` Last successful sync: ${new Date(syncedAt).toLocaleString()}.` : ''}`;
     })
     .join('\n');
-  const jiraStatus = data?.state.jira;
-  const jiraSyncedAt = jiraStatus?.syncedAt ?? data?.snapshot?.syncedAt;
-  const jiraStale = jiraStatus && (jiraStatus.state === 'connected' || jiraStatus.state === 'partial') && !isSourceFresh(jiraSyncedAt);
   const statusText = loading
-    ? 'Loading Jira data…'
-    : error || jiraStatus?.state === 'error'
-      ? 'Jira data unavailable'
-      : jiraStale
-        ? 'Jira data stale'
-        : jiraStatus?.state === 'partial'
-          ? 'Partial Jira data'
-          : jiraStatus?.state === 'not-configured'
-            ? 'Jira is not configured'
-            : jiraStatus?.state === 'not-synced'
-              ? 'Jira has not synced'
-              : `${jiraIssueCount} Jira issues`;
+    ? 'Loading source data…'
+    : error
+      ? 'Source data unavailable'
+      : sourceStatusText || `${jiraIssueCount} Jira issues`;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+      {isLocalDemoMode() && <span style={{ border: '1px solid #d97706', color: '#92400e', background: '#fffbeb', borderRadius: 6, padding: '3px 6px', fontWeight: 700, whiteSpace: 'nowrap' }}>LOCAL DEMO · SYNTHETIC DATA</span>}
       <span role="status" aria-live="polite" title={sourceStatusDetails}>
         {statusText}
       </span>

@@ -2,7 +2,6 @@ export interface ForecastIssue {
   key: string;
   project: string;
   status: string;
-  statusCategory?: string;
   priority: string;
   owner?: string;
   department?: string;
@@ -28,19 +27,11 @@ export interface ForecastInput {
   issues: ForecastIssue[];
   repos: ForecastRepo[];
   pages: ForecastPage[];
-  reopenHistoryWeeks?: number;
-  pipelineHistoryWeeks?: number;
 }
 
 export type Windows = 7 | 14 | 30;
 export const WINDOWS: Windows[] = [7, 14, 30];
-export type Insufficient = {
-  status: 'insufficient-data';
-  reason: string;
-  have: number;
-  need: number;
-  missingInput: string;
-};
+export type Insufficient = { status: 'insufficient-data'; reason: string; have: number; need: number };
 export type Ready<T> = { status: 'ready' } & T;
 
 export interface DeliveryWindow {
@@ -65,9 +56,8 @@ export interface PotentialRisk {
   action: string;
   owner: string;
   client?: string;
-  probability?: number;
+  probability: number;
   window: Windows;
-  basis: 'statistical' | 'heuristic';
 }
 
 export interface AnomalyMetric {
@@ -85,39 +75,22 @@ export interface AnomalyMetric {
 
 export interface RiskForecast {
   generatedAt: string;
-  thresholds: typeof FORECAST_THRESHOLDS;
-  dataState: 'fresh' | 'partial' | 'stale';
-  sources: Partial<Record<'jira' | 'confluence' | 'bitbucket', {
-    state: string;
-    syncedAt?: string;
-    ageMs: number | null;
-    cached: boolean;
-  }>>;
   delivery: Insufficient | Ready<{ windows: DeliveryWindow[] }>;
   potentialRisks: Insufficient | Ready<{ items: PotentialRisk[] }>;
   anomalies: Insufficient | Ready<{ items: AnomalyMetric[]; checked: number }>;
 }
 
-export const FORECAST_THRESHOLDS = {
-  minResolvedIssues: 15,
-  resolvedWindowDays: 90,
-  pullRequestMergeWindowDays: 90,
-  minObservedWeeks: 8,
-  minEventsForAnomaly: 3,
-  anomalyZScore: 2,
-  anomalyMultiple: 1.5,
-  stuckPullRequestPercentile: 0.85,
-} as const;
-const MIN_RESOLVED = FORECAST_THRESHOLDS.minResolvedIssues;
+const MIN_RESOLVED = 15;
+const MIN_WEEKS = 6;
+const Z_LIMIT = 2;
 const DAY = 86_400_000;
 const days = (a: Date, b: Date) => (a.getTime() - b.getTime()) / DAY;
-const isDone = (s: string, category?: string) =>
-  category ? category.toLowerCase() === 'done' : /^(done|closed|resolved|complete|completed)$/i.test(s.trim());
+const isDone = (s: string) => /^(done|closed|resolved|complete|completed)$/i.test(s.trim());
 const mean = (values: number[]) => values.reduce((total, value) => total + value, 0) / values.length;
 const sd = (values: number[]) => Math.sqrt(mean(values.map((value) => (value - mean(values)) ** 2)));
 const pct = (sorted: number[], p: number) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
-const insufficient = (reason: string, have: number, need: number, missingInput: string): Insufficient =>
-  ({ status: 'insufficient-data', reason, have, need, missingInput });
+const insufficient = (reason: string, have: number, need: number): Insufficient =>
+  ({ status: 'insufficient-data', reason, have, need });
 
 function validDate(value: string | undefined): Date | null {
   if (!value) return null;
@@ -151,18 +124,13 @@ export function forecastDelivery(issues: ForecastIssue[], now: Date): RiskForeca
     .sort((a, b) => a - b);
 
   if (cycle.length < MIN_RESOLVED) {
-    return insufficient(
-      `resolved Jira issues in the last ${FORECAST_THRESHOLDS.resolvedWindowDays} days: have ${cycle.length}, need ${MIN_RESOLVED}`,
-      cycle.length,
-      MIN_RESOLVED,
-      'Jira resolvedAt and createdAt',
-    );
+    return insufficient('Not enough resolved Jira issues in the last 90 days to estimate cycle time', cycle.length, MIN_RESOLVED);
   }
 
   const open = issues.flatMap((issue) => {
     const created = validDate(issue.createdAt);
     const due = validDate(issue.dueDate);
-    return !isDone(issue.status, issue.statusCategory) && created && due ? [{ created, due }] : [];
+    return !isDone(issue.status) && created && due ? [{ created, due }] : [];
   });
   const windows = WINDOWS.map((window): DeliveryWindow => {
     const probabilities: number[] = [];
@@ -215,23 +183,19 @@ export function forecastAnomalies(input: ForecastInput, now: Date): RiskForecast
     },
   ];
   const items: AnomalyMetric[] = [];
-  const missing: string[] = [];
   let checked = 0;
+  let best = 0;
   for (const item of series) {
     const counts = weekly(item.stamps, now);
     const history = counts.slice(0, 8);
     const current = counts[8];
-    const observedWeeks = item.id === 'fan-reopen' ? input.reopenHistoryWeeks : input.pipelineHistoryWeeks;
-    const eventCount = counts.reduce((total, value) => total + value, 0);
-    if (observedWeeks === undefined || observedWeeks < FORECAST_THRESHOLDS.minObservedWeeks ||
-        eventCount < FORECAST_THRESHOLDS.minEventsForAnomaly) {
-      missing.push(`${item.id === 'fan-reopen' ? 'reopenedAt' : 'Bitbucket pipelines'}: ${eventCount} events in ${observedWeeks ?? 0} observed weeks (need ${FORECAST_THRESHOLDS.minEventsForAnomaly} events and ${FORECAST_THRESHOLDS.minObservedWeeks} weeks)`);
-      continue;
-    }
+    const activeWeeks = history.filter((count) => count > 0).length + (current > 0 ? 1 : 0);
+    best = Math.max(best, activeWeeks);
+    if (activeWeeks < MIN_WEEKS) continue;
     checked++;
     const average = mean(history);
     const z = sd(history) > 0 ? (current - average) / sd(history) : current > average ? Infinity : 0;
-    if (z > FORECAST_THRESHOLDS.anomalyZScore && current >= average * FORECAST_THRESHOLDS.anomalyMultiple) {
+    if (z > Z_LIMIT && current >= average * 1.5) {
       items.push({
         id: item.id,
         metric: item.metric,
@@ -247,12 +211,7 @@ export function forecastAnomalies(input: ForecastInput, now: Date): RiskForecast
     }
   }
   return checked === 0
-    ? insufficient(
-        missing.join('; '),
-        Math.max(input.reopenHistoryWeeks ?? 0, input.pipelineHistoryWeeks ?? 0),
-        FORECAST_THRESHOLDS.minObservedWeeks,
-        'Jira reopenedAt / Bitbucket pipeline history',
-      )
+    ? insufficient('Not enough weekly reopen or pipeline history to define a normal level', best, MIN_WEEKS)
     : { status: 'ready', items, checked };
 }
 
@@ -268,10 +227,7 @@ export function forecastPotentialRisks(
     const merged = validDate(pullRequest.mergedAt);
     if (!created || !merged) return [];
     const duration = days(merged, created);
-    const mergedAgo = days(now, merged);
-    return duration >= 0 && mergedAgo >= 0 && mergedAgo <= FORECAST_THRESHOLDS.pullRequestMergeWindowDays
-      ? [duration]
-      : [];
+    return duration >= 0 ? [duration] : [];
   }).sort((a, b) => a - b);
 
   if (delivery.status === 'ready') {
@@ -288,16 +244,15 @@ export function forecastPotentialRisks(
         cause: 'Open time already exceeds what similar issues took in the last 90 days',
         impact: `Up to ${window.worstDelayDays} days of delay`,
         action: 'Review owners and scope for the issues due soonest',
-        owner: '',
+        owner: 'Delivery lead',
         probability: window.probabilityAnyLate,
         window: window.window,
-        basis: 'statistical',
       });
     }
   }
 
   if (mergedDurations.length >= MIN_RESOLVED) {
-    const mergeLimit = pct(mergedDurations, FORECAST_THRESHOLDS.stuckPullRequestPercentile);
+    const mergeLimit = pct(mergedDurations, 0.85);
     const stuck = pullRequests.filter((pullRequest) => {
       const created = validDate(pullRequest.createdAt);
       return pullRequest.state === 'OPEN' && created && days(now, created) > mergeLimit;
@@ -311,25 +266,47 @@ export function forecastPotentialRisks(
         day: 7,
         type: 'internal',
         area: 'Quality',
-        risk: `${stuck} pull requests open longer than 85% of merges in the last 90 days`,
+        risk: `${stuck} pull requests open longer than 85% of past merges`,
         cause: `Normal merge time is under ${Math.ceil(mergeLimit)} days`,
         impact: 'Features wait in review and miss the release',
         action: 'Assign reviewers to the oldest pull requests',
-        owner: '',
+        owner: 'Engineering lead',
+        probability: 0.6,
         window: 7,
-        basis: 'heuristic',
       });
     }
   }
 
+  const datedPages = input.pages.flatMap((page) => {
+    const lastModified = validDate(page.lastModified);
+    return lastModified ? [{ title: page.title, lastModified }] : [];
+  });
+  const staleDecisions = datedPages.filter((page) =>
+    /decision|adr|rfc/i.test(page.title) && days(now, page.lastModified) > 90,
+  ).length;
+  if (staleDecisions) {
+    items.push({
+      id: 'fp-stale',
+      lvl: 'm',
+      dept: 'All',
+      project: 'Confluence',
+      day: 30,
+      type: 'internal',
+      area: 'Data & reporting',
+      risk: `${staleDecisions} decision pages not updated in 90+ days`,
+      cause: 'Decision records may no longer match what the teams are doing',
+      impact: 'Teams act on outdated decisions',
+      action: 'Ask page owners to confirm or retire them',
+      owner: 'Page owners',
+      probability: 0.5,
+      window: 30,
+    });
+  }
+
   const hasPullRequestHistory = mergedDurations.length >= MIN_RESOLVED;
-  if (delivery.status !== 'ready' && !hasPullRequestHistory) {
-    return insufficient(
-      'No supported potential-risk input is ready (Jira delivery cycle time or Bitbucket pull-request merge history)',
-      0,
-      MIN_RESOLVED,
-      'Jira cycle time or Bitbucket merged pull requests',
-    );
+  const hasPageHistory = datedPages.length > 0;
+  if (delivery.status !== 'ready' && !hasPullRequestHistory && !hasPageHistory) {
+    return insufficient('Not enough Jira cycle-time, pull-request merge, or Confluence modified-date history', 0, MIN_RESOLVED);
   }
   return { status: 'ready', items };
 }
@@ -338,9 +315,6 @@ export function buildRiskForecast(input: ForecastInput, now = new Date()): RiskF
   const delivery = forecastDelivery(input.issues, now);
   return {
     generatedAt: now.toISOString(),
-    thresholds: FORECAST_THRESHOLDS,
-    dataState: 'fresh',
-    sources: {},
     delivery,
     potentialRisks: forecastPotentialRisks(input, delivery, now),
     anomalies: forecastAnomalies(input, now),

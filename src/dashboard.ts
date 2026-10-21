@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { calculateDeliveryMetrics } from './metrics/delivery-metrics';
 import { isSourceFresh } from './shared/data-freshness';
-import { potentialForecastStatus, forecastTooltip } from './forecast/dashboard-adapter';
 
 export function initDashboard() {'use strict';
 
@@ -98,7 +97,7 @@ export function initDashboard() {'use strict';
   // =====================================================================
   var S = {
     view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null, wkOpen: {},
-    drawer: null, page: null, open: null, dec: {}, nav: { dash: true }, chat: false,
+    drawer: null, page: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
     msgs: []
   };
   var DASHBOARD_DATA_AVAILABLE = false;
@@ -414,10 +413,10 @@ export function initDashboard() {'use strict';
       })() +
       '</ul><small class="insight-disclaimer">Deterministic summaries of synchronized Jira fields; not generative AI or a probability forecast.</small></section>';
 
-    h += '<section class="card"><div class="ch"><h3>Recommended executive plan</h3></div><div>' +
+    h += '<section class="card"><div class="ch"><h3>Recommended executive plan</h3></div><p class="def" style="margin-top:-4px">No verified recommendation engine is configured</p><div>' +
       PLAN.map(function (a, i) {
         return '<div class="aitem"><span class="no">' + (i + 1) + '</span><div><div class="t">' + esc(a.text) + '</div><small>' + esc(a.why) + ' · with <b>' + esc(a.owner) + '</b></small></div></div>';
-      }).join('') + '</div><button class="btn" type="button" disabled title="No verified assignment integration is configured">Assignment unavailable <span aria-hidden="true">→</span></button></section>';
+      }).join('') + '</div><div class="okbox">Action plans and assignment status are unavailable; no tasks were generated or sent.</div></section>';
 
     var pending = DECISIONS.length;
     h += '<section class="card"><div class="ch"><h3>Decisions awaiting approval</h3><span class="pill ' + (pending ? 'h' : 'n') + '">' + (DASHBOARD_DATA_AVAILABLE ? pending + ' pending' : 'Unavailable') + '</span></div>' +
@@ -1110,11 +1109,11 @@ export function initDashboard() {'use strict';
     if ((a = t.getAttribute('data-act'))) {
       if (a === 'collapse') shell.classList.toggle('collapsed');
       if (a === 'menu') shell.classList.toggle('menu-open');
-      if (a === 'send') { toast('Plan sending is unavailable in this pilot; no notifications were sent.'); }
+      if (a === 'send') { S.sent = true; render(); toast('Plan sent to ' + PLAN.length + ' owners with due dates'); }
       if (a === 'chat') { S.chat = !S.chat; S.bubbleGone = true; renderChat(); if (S.chat) setTimeout(function () { var i = document.getElementById('chatin'); if (i) i.focus(); }, 0); }
       return;
     }
-    if ((a = t.getAttribute('data-decide'))) { S.dec[a] = t.getAttribute('data-v'); render(); toast('Decision updated for this view only; no Jira update or requester notification was sent.'); return; }
+    if ((a = t.getAttribute('data-decide'))) { S.dec[a] = t.getAttribute('data-v'); render(); toast(S.dec[a] === 'yes' ? 'Approved. The requester has been notified.' : 'Declined. The requester has been notified.'); return; }
     if ((a = t.getAttribute('data-undo'))) { delete S.dec[a]; render(); return; }
     if ((a = t.getAttribute('data-ask'))) { var p = PROMPTS[+a]; ask(p[0], p[1]()); return; }
     if ((a = t.getAttribute('data-wk'))) { S.wkOpen[a] = !S.wkOpen[a]; render(); return; }
@@ -1301,7 +1300,8 @@ export function initDashboard() {'use strict';
     if (S.pop === 'notif') n.insertAdjacentHTML('beforeend', '<button class="opt" data-markseen style="color:var(--accent);font-weight:600">' + (S.seen ? '✓ All seen' : 'Mark all as seen') + '</button>');
     document.querySelectorAll('#pop-cal .cal .has').forEach(function (el) { el.setAttribute('data-day', el.textContent); el.setAttribute('role', 'button'); el.tabIndex = 0; el.style.cursor = 'pointer'; });
   };
-  function refreshNow(quiet) { render(); if (S.drawer) renderDrawer(); if (!quiet) toast('Dashboard refreshed'); }
+  function stamp() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function refreshNow(quiet) { document.querySelector('.updated').textContent = 'Last updated ' + stamp(); render(); if (S.drawer) renderDrawer(); if (!quiet) toast('Dashboard refreshed'); }
   function requestSourceSync(quiet) {
     var request = new Event('xone-sync-request', { cancelable: true });
     window.dispatchEvent(request);
@@ -1391,10 +1391,57 @@ export function initDashboard() {'use strict';
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.activeElement && document.activeElement.id === 'q') document.activeElement.blur(); });
 
+  function renderBackendForecast(forecast, sourceState) {
+    var panel = document.getElementById('forecast-summary');
+    if (!panel) return;
+    if (!forecast || !forecast.generatedAt) {
+      panel.hidden = true;
+      panel.textContent = '';
+      return;
+    }
+    var delivery = forecast.delivery || {};
+    var risks = forecast.potentialRisks || {};
+    var anomalies = forecast.anomalies || {};
+    function describe(section, readyText) {
+      if (section.status === 'insufficient-data') return 'Insufficient data: ' + (section.reason || 'required history is unavailable') + ' (' + (section.have ?? 0) + '/' + (section.need ?? '?') + ').';
+      return readyText;
+    }
+    var deliveryText = delivery.status === 'ready'
+      ? (delivery.windows || []).map(function (window) { return window.window + 'd: ' + window.issuesDue + ' due, ' + Math.round(window.probabilityAnyLate * 100) + '% probability of any late issue'; }).join(' · ') || 'No eligible dated issues in these windows.'
+      : describe(delivery, 'Forecast unavailable.');
+    var riskItems = risks.status === 'ready' ? (risks.items || []) : [];
+    var riskText = risks.status === 'ready'
+      ? (riskItems.length ? riskItems.slice(0, 3).map(function (item) { return item.risk; }).join(' · ') : 'No potential risks met the current deterministic rules.')
+      : describe(risks, 'Risk assessment unavailable.');
+    var anomalyItems = anomalies.status === 'ready' ? (anomalies.items || []) : [];
+    var anomalyText = anomalies.status === 'ready'
+      ? (anomalyItems.length ? anomalyItems.map(function (item) { return item.metric + ': ' + item.now + ' this week'; }).join(' · ') : 'No anomaly exceeded the configured threshold.')
+      : describe(anomalies, 'Anomaly assessment unavailable.');
+    panel.replaceChildren();
+    var head = document.createElement('div'); head.className = 'forecast-head';
+    var title = document.createElement('h2'); title.textContent = 'Deterministic forecast';
+    var meta = document.createElement('span'); meta.className = 'forecast-meta';
+    var generated = new Date(forecast.generatedAt);
+    meta.textContent = 'Generated ' + (Number.isNaN(generated.getTime()) ? 'at unknown time' : generated.toLocaleString());
+    head.append(title, meta); panel.append(head);
+    var grid = document.createElement('div'); grid.className = 'forecast-grid';
+    [[ 'Delivery outlook', deliveryText ], [ 'Potential risks (' + (risks.status === 'ready' ? riskItems.length : '—') + ')', riskText ], [ 'Anomalies', anomalyText ]].forEach(function (entry) {
+      var cell = document.createElement('div'); cell.className = 'forecast-cell';
+      var label = document.createElement('b'); label.textContent = entry[0];
+      var content = document.createElement('p'); content.textContent = entry[1];
+      cell.append(label, content); grid.append(cell);
+    });
+    panel.append(grid);
+    var note = document.createElement('p'); note.className = 'forecast-note';
+    note.textContent = 'Rule/statistical output, not generative AI. Probabilities require validation against historical outcomes. ' +
+      'Source state: ' + ['jira', 'confluence', 'bitbucket'].map(function (key) { return key + '=' + (sourceState && sourceState[key] ? sourceState[key].state : 'unknown'); }).join(', ') + '.';
+    panel.append(note); panel.hidden = false;
+  }
+
   window.addEventListener('xone-source-data', function (event) {
     var data = event.detail || {};
+    renderBackendForecast(data.forecast, data.state);
     var snapshot = data.snapshot;
-    var forecast = data.forecast;
     var jiraState = data.state && data.state.jira ? data.state.jira : null;
     var lastJiraSync = jiraState && jiraState.syncedAt || snapshot && snapshot.syncedAt;
     var jiraFresh = isSourceFresh(lastJiraSync);
@@ -1409,7 +1456,7 @@ export function initDashboard() {'use strict';
       VIEWS[view].off = ['—', 'historical data unavailable', 0];
       VIEWS[view].crit = ['—', 'historical data unavailable'];
       VIEWS[view].stuck = ['—', 'historical data unavailable'];
-      VIEWS[view].pot = ['—', 'Forecast: ' + potentialForecastStatus(forecast)];
+      VIEWS[view].pot = ['—', 'historical data unavailable'];
     });
     [
       peopleCapacityRisks,
@@ -1425,20 +1472,14 @@ export function initDashboard() {'use strict';
     if (updatedLabel) {
       var syncedAt = snapshot && snapshot.syncedAt ? new Date(snapshot.syncedAt) : null;
       updatedLabel.textContent = !jiraCurrent
-        ? (jiraState && jiraState.state === 'error' ? 'Unavailable' :
-          jiraState && (jiraState.state === 'connected' || jiraState.state === 'partial') && !jiraFresh ? 'Stale' : 'Unavailable')
+        ? (jiraState && jiraState.state === 'error' ? 'Jira sync failed · cached data hidden' :
+          jiraState && (jiraState.state === 'connected' || jiraState.state === 'partial') && !jiraFresh ? 'Jira data stale · cached data hidden' : 'Jira data unavailable')
         : syncedAt && !Number.isNaN(syncedAt.getTime())
-          ? jiraState.state === 'partial'
-            ? 'Partial'
-            : 'Last updated ' + syncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          ? (jiraState.state === 'partial' ? 'Partial Jira data · ' : 'Last updated ') + syncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : 'Not synced';
       updatedLabel.title = syncedAt && !Number.isNaN(syncedAt.getTime())
         ? (jiraCurrent ? 'Last successful Jira sync: ' : 'Last successful Jira sync (cached data not used): ') + syncedAt.toLocaleString() + (jiraState && jiraState.message ? '\n' + jiraState.message : '')
         : (jiraState && jiraState.message) || 'No successful Jira source sync has been recorded';
-      updatedLabel.title += '\n' + forecastTooltip(forecast);
-      if (jiraState && jiraState.state === 'partial') {
-        updatedLabel.title += '\nJira data is partial.';
-      }
     }
     var today = new Date();
     TODAY = today;
@@ -1534,6 +1575,7 @@ export function initDashboard() {'use strict';
       u: RISKS.filter(function (issue) { return !issue.priorityKnown; }).length,
     };
     S.dec = {};
+    S.sent = false;
     var bubble = document.getElementById('bubble');
     if (bubble) bubble.textContent = !DASHBOARD_DATA_AVAILABLE
       ? 'Current Jira metrics are unavailable. Check source synchronization status.'
