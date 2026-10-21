@@ -78,6 +78,15 @@ export interface DashboardDataResponse {
   forecast?: RiskForecast;
 }
 
+export interface AuthStatusResponse {
+  authenticated: boolean;
+  authorized: boolean;
+  role: 'executive' | 'operator' | 'admin' | null;
+  canSync: boolean;
+  canWrite: boolean;
+  code?: 'AUTHENTICATION_REQUIRED' | 'AUTHORIZATION_DENIED' | 'AUTH_STATUS_UNAVAILABLE';
+}
+
 export interface CreateJiraIssueInput {
   projectKey: string;
   summary: string;

@@ -40,9 +40,10 @@ export async function synchronizeSources(
   previousState: SyncState | null,
   options: { jiraExecutionContext?: 'user' | 'app' } = {},
 ): Promise<{ snapshot: XoneSnapshot; state: SyncState }> {
+  const executionContext = options.jiraExecutionContext ?? 'user';
   const [jira, confluence, bitbucket] = await Promise.all([
-    runSource('Jira', () => fetchJiraIssues(options.jiraExecutionContext ?? 'user')),
-    runSource('Confluence', fetchConfluencePages),
+    runSource('Jira', () => fetchJiraIssues(executionContext)),
+    runSource('Confluence', () => fetchConfluencePages(executionContext)),
     runSource('Bitbucket', fetchBitbucketRepositories),
   ]);
   const syncedAt = new Date().toISOString();

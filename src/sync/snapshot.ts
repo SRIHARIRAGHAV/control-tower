@@ -2,10 +2,16 @@ import { readSnapshot, readSyncState, writeSyncResult } from '../db/client';
 import { buildRiskForecast } from '../forecast/risk-forecast';
 import { synchronizeSources } from './worker';
 
-export async function syncAndStore(options: { jiraExecutionContext?: 'user' | 'app' } = {}) {
+export async function syncAndStore(options: {
+  jiraExecutionContext?: 'user' | 'app';
+  storageScope?: string;
+} = {}) {
+  if (options.jiraExecutionContext === 'user' && !options.storageScope?.trim()) {
+    throw new Error('User-context sync requires a server-derived storage scope.');
+  }
   const [previous, previousState] = await Promise.all([
-    readSnapshot(),
-    readSyncState(),
+    readSnapshot(options.storageScope),
+    readSyncState(options.storageScope),
   ]);
   const result = await synchronizeSources(previous, previousState, options);
   const forecast = (result.state.jira.state === 'connected' || result.state.jira.state === 'partial')
@@ -31,6 +37,6 @@ export async function syncAndStore(options: { jiraExecutionContext?: 'user' | 'a
           : [],
       })
     : undefined;
-  await writeSyncResult(result.snapshot, result.state, forecast);
+  await writeSyncResult(result.snapshot, result.state, forecast, options.storageScope);
   return { ...result, ...(forecast ? { forecast } : {}) };
 }

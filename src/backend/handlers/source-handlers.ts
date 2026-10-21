@@ -25,8 +25,8 @@ function initialLiveState(): DashboardDataResponse['state'] {
   };
 }
 
-export async function getDashboardData(): Promise<DashboardDataResponse> {
-  const stored = await readStoredSourceData();
+export async function getDashboardData(accountId: string): Promise<DashboardDataResponse> {
+  const stored = await readStoredSourceData(accountId);
   return {
     snapshot: stored.snapshot,
     state: stored.state ?? initialLiveState(),
@@ -34,6 +34,6 @@ export async function getDashboardData(): Promise<DashboardDataResponse> {
   };
 }
 
-export async function syncSources() {
-  return syncAndStore();
+export async function syncSources(accountId: string) {
+  return syncAndStore({ jiraExecutionContext: 'user', storageScope: accountId });
 }

@@ -1,5 +1,5 @@
 import api, { route } from '@forge/api';
-import { buildJiraSearchJql } from '../backend/services/jira-query';
+import { buildJiraSearchJql, jiraProjectKeyForContext } from '../backend/services/jira-query';
 import type { JiraIssueSummary, SourceResult } from '../shared/types';
 import { mapJiraIssues, type JiraCustomFieldIds, type JiraSearchResponse } from '../sync/normalise';
 import { readProviderErrorDetail } from './http';
@@ -48,7 +48,7 @@ async function fetchCustomFieldIds(executionContext: 'user' | 'app'): Promise<Ji
 }
 
 export async function fetchJiraIssues(executionContext: 'user' | 'app' = 'user'): Promise<SourceResult<JiraIssueSummary>> {
-  const projectKey = process.env.JIRA_PROJECT_KEY?.trim();
+  const projectKey = jiraProjectKeyForContext(process.env.JIRA_PROJECT_KEY, executionContext);
   const jql = buildJiraSearchJql(projectKey);
   const customFields = await fetchCustomFieldIds(executionContext);
   const missingFields = Object.entries(CUSTOM_FIELD_NAMES)

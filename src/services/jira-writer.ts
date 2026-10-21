@@ -1,6 +1,6 @@
 import api, { route } from '@forge/api';
 import type { AddJiraCommentInput, CreateJiraIssueInput } from '../shared/types';
-import { readProviderErrorDetail } from '../connectors/http';
+import { jiraWriteErrorCode } from './jira-write-error';
 
 function toAdf(text: string) {
   return {
@@ -29,10 +29,7 @@ export async function createJiraIssue(input: CreateJiraIssueInput): Promise<{ id
     }),
   });
   if (!response.ok) {
-    const detail = await readProviderErrorDetail(response);
-    throw new Error(
-      `Jira issue creation failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}. Check project permissions and issue type settings.`,
-    );
+    throw new Error(jiraWriteErrorCode(response.status));
   }
   return (await response.json()) as { id: string; key: string; self: string };
 }
@@ -44,10 +41,7 @@ export async function addJiraComment(input: AddJiraCommentInput): Promise<{ id: 
     body: JSON.stringify({ body: toAdf(input.body) }),
   });
   if (!response.ok) {
-    const detail = await readProviderErrorDetail(response);
-    throw new Error(
-      `Jira comment creation failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}. Check issue permissions.`,
-    );
+    throw new Error(jiraWriteErrorCode(response.status));
   }
   return (await response.json()) as { id: string; self: string };
 }

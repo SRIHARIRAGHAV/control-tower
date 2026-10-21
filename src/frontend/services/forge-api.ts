@@ -1,5 +1,6 @@
 import type {
   AddJiraCommentInput,
+  AuthStatusResponse,
   CreateJiraIssueInput,
   DashboardDataResponse,
 } from '../../shared/types';
@@ -10,6 +11,19 @@ const localDemoEnabled = import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE !
 
 export function isLocalDemoMode(): boolean {
   return localDemoEnabled;
+}
+
+export function getAuthStatus(): Promise<AuthStatusResponse> {
+  if (localDemoEnabled) {
+    return Promise.resolve({
+      authenticated: true,
+      authorized: true,
+      role: 'operator',
+      canSync: true,
+      canWrite: false,
+    });
+  }
+  return invokeForge<AuthStatusResponse>('getAuthStatus');
 }
 
 async function invokeForge<T>(method: string, payload?: Record<string, unknown>): Promise<T> {

@@ -1,11 +1,30 @@
+import {
+  fetch as forgeFetch,
+  type RequestInit as ForgeRequestInit,
+  type Response as ForgeResponse,
+} from '@forge/api';
+
 interface JsonRequestOptions {
   expectedHost: string;
   errorMessage: string;
   redact?: string[];
 }
 
-interface TextResponse {
-  text(): Promise<string>;
+const MAX_ATTEMPTS = 3;
+
+function retryDelay(response: ForgeResponse, attempt: number): number {
+  const retryAfter = response.headers.get('retry-after');
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.min(seconds * 1000, 5000);
+    const timestamp = Date.parse(retryAfter);
+    if (Number.isFinite(timestamp)) return Math.min(Math.max(0, timestamp - Date.now()), 5000);
+  }
+  return Math.min(250 * 2 ** (attempt - 1), 2000);
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function stringsFrom(value: unknown): string[] {
@@ -17,7 +36,7 @@ function stringsFrom(value: unknown): string[] {
   return [];
 }
 
-export async function readProviderErrorDetail(response: TextResponse): Promise<string> {
+export async function readProviderErrorDetail(response: Pick<ForgeResponse, 'text'>): Promise<string> {
   const body = await response.text();
   let detail = body;
 
@@ -53,14 +72,33 @@ export async function readProviderErrorDetail(response: TextResponse): Promise<s
 
 export async function requestJson<T>(
   url: URL,
-  init: RequestInit,
+  init: ForgeRequestInit,
   options: JsonRequestOptions,
 ): Promise<T> {
   if (url.protocol !== 'https:' || url.hostname !== options.expectedHost) {
     throw new Error('The external service returned an unexpected URL; stopping the request.');
   }
 
-  const response = await fetch(url, init);
+  let response: ForgeResponse | undefined;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      response = await forgeFetch(url.toString(), init);
+    } catch (error) {
+      if (error instanceof TypeError && attempt < MAX_ATTEMPTS) {
+        await wait(250 * 2 ** (attempt - 1));
+        continue;
+      }
+      const detail = error instanceof Error ? error.message : 'Unknown network error';
+      throw new Error(`${options.errorMessage} Network request to ${url.hostname} failed: ${detail}.`, { cause: error });
+    }
+
+    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === MAX_ATTEMPTS) break;
+    await wait(retryDelay(response, attempt));
+  }
+  if (!response) {
+    throw new Error(`${options.errorMessage} Network request to ${url.hostname} returned no response.`);
+  }
+
   if (!response.ok) {
     let details = await readProviderErrorDetail(response);
     for (const secret of options.redact ?? []) {

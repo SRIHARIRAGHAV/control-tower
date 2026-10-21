@@ -58,16 +58,32 @@ Install and authenticate the Atlassian Forge CLI, then run:
 
 The deployment builds the React dashboard first and packages it with the Forge
 resolvers and Jira/Confluence/Bitbucket sync handlers. `npm run forge:install`
-is for installing the app on a Jira site after the first deployment.
+is for installing the app on a Jira site after the first deployment. The
+unused `read:jira-user` scope has been removed; Forge requires a major-version
+upgrade approval when deploying this scope reduction.
 
 ## Access-control configuration
 
-The intended Forge role policy uses comma-separated Atlassian account IDs in encrypted Forge environment variables:
+The Forge resolver context is the only source of the current account ID; the
+frontend cannot supply or override the identity. View access is limited to
+allowlisted executives, operators, or administrators. Those users can trigger
+a sync that calls Jira and Confluence as the current user, so provider
+permissions still apply. User-triggered snapshots are isolated per Atlassian
+account. The scheduled sync runs as the app and stores a separate snapshot
+which is not returned by user-facing resolvers. Jira write actions use the
+current user and require the operator or administrator role.
 
-- `CONTROL_TOWER_EXECUTIVE_ACCOUNT_IDS`: users allowed to view executive dashboard data.
-- `CONTROL_TOWER_OPERATOR_ACCOUNT_IDS`: users allowed to synchronize sources and perform Jira write actions.
+Configure comma-separated Atlassian account IDs as Forge environment
+variables. Empty allowlists deny access:
 
-Configure these only in the Forge environment, not in frontend variables or committed files. If the allowlists are not configured, role-protected operations are denied. Local demo mode is read-only and does not exercise the Forge authorization policy.
+- `CONTROL_TOWER_EXECUTIVE_ACCOUNT_IDS`: dashboard view and user-context sync.
+- `CONTROL_TOWER_OPERATOR_ACCOUNT_IDS`: view, sync, and Jira write operations.
+- `CONTROL_TOWER_ADMIN_ACCOUNT_IDS`: all current operations and reserved admin actions.
+
+Set the variables in the Forge environment, not in frontend variables or
+committed files. Configure `JIRA_PROJECT_KEY` in Forge for scheduled
+app-context Jira sync; it is never accepted from a browser request. Local demo
+mode is synthetic and does not exercise Forge authentication or authorization.
 
 ## AI service configuration
 

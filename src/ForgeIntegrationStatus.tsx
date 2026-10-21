@@ -8,7 +8,18 @@ function publishDashboardData(data: DashboardDataResponse) {
 }
 
 function errorMessage(reason: unknown, fallback: string): string {
-  return reason instanceof Error ? reason.message : fallback;
+  const message = reason instanceof Error
+    ? reason.message
+    : typeof reason === 'string'
+      ? reason
+      : reason && typeof reason === 'object' && 'message' in reason && typeof reason.message === 'string'
+        ? reason.message
+        : '';
+  if (message.includes('AUTHENTICATION_REQUIRED')) return 'Sign in to Jira to access Control Tower.';
+  if (message.includes('AUTHORIZATION_DENIED')) return 'Your Jira account is not authorized to perform this action.';
+  if (message.includes('JIRA_PERMISSION_DENIED')) return 'Jira denied this operation. Check your project permissions.';
+  if (message.includes('INVALID_REQUEST')) return 'The request is invalid. Check the supplied values.';
+  return fallback;
 }
 
 function failedSyncData(previous: DashboardDataResponse | null, message: string): DashboardDataResponse {
@@ -26,7 +37,7 @@ function failedSyncData(previous: DashboardDataResponse | null, message: string)
   };
 }
 
-export default function ForgeIntegrationStatus() {
+export default function ForgeIntegrationStatus({ canSync }: { canSync: boolean }) {
   const [data, setData] = useState<DashboardDataResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -37,6 +48,7 @@ export default function ForgeIntegrationStatus() {
 
     function handleSyncRequest(event: Event) {
       event.preventDefault();
+      if (!canSync) return;
       void refresh();
     }
 
@@ -79,6 +91,7 @@ export default function ForgeIntegrationStatus() {
   }, []);
 
   async function refresh() {
+    if (!canSync) return;
     setSyncing(true);
     setError('');
     try {
@@ -135,8 +148,9 @@ export default function ForgeIntegrationStatus() {
       <button
         type="button"
         onClick={refresh}
-        disabled={loading || syncing}
+        disabled={!canSync || loading || syncing}
         aria-label="Synchronize Jira and connected sources"
+        title={canSync ? undefined : 'Your account does not have the operator role'}
       >
         {syncing ? 'Syncing…' : 'Sync'}
       </button>

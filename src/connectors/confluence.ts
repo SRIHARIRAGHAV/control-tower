@@ -3,7 +3,7 @@ import type { ConfluencePageSummary, SourceResult } from '../shared/types';
 import { mapConfluencePages, type ConfluencePagesResponse } from '../sync/normalise';
 import { readProviderErrorDetail } from './http';
 
-export async function fetchConfluencePages(): Promise<SourceResult<ConfluencePageSummary>> {
+export async function fetchConfluencePages(executionContext: 'user' | 'app' = 'user'): Promise<SourceResult<ConfluencePageSummary>> {
   const pageSize = 100;
   const pagesById = new Map<string, ConfluencePageSummary>();
   const seenCursors = new Set<string>();
@@ -16,7 +16,8 @@ export async function fetchConfluencePages(): Promise<SourceResult<ConfluencePag
       status: 'current',
       ...(cursor ? { cursor } : {}),
     });
-    const response = await api.asApp().requestConfluence(
+    const client = executionContext === 'app' ? api.asApp() : api.asUser();
+    const response = await client.requestConfluence(
       route`/wiki/api/v2/pages?${query}`,
       { headers: { Accept: 'application/json' } },
     );

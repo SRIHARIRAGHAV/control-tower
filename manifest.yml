@@ -22,6 +22,12 @@ app:
             type: any
           updatedAt:
             type: string
+      - name: xone_audit_log
+        attributes:
+          payload:
+            type: any
+          updatedAt:
+            type: string
 modules:
   jira:globalPage:
     - key: xone-risk-intelligence

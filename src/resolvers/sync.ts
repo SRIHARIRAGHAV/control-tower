@@ -1,11 +1,11 @@
 import { syncSources } from '../backend/handlers/source-handlers';
 import { syncAndStore } from '../sync/snapshot';
 import { resolver } from './registry';
-import { requireRole } from './authorization';
+import { authorize } from './authorization';
 
 resolver.define('syncNow', async ({ context }) => {
-  requireRole(context, 'operator');
-  return syncSources();
+  const user = authorize(context, 'SYNC');
+  return syncSources(user.accountId);
 });
 
 export async function hourlySync() {
