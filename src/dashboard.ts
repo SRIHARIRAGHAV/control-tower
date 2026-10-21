@@ -413,10 +413,10 @@ export function initDashboard() {'use strict';
       })() +
       '</ul><small class="insight-disclaimer">Deterministic summaries of synchronized Jira fields; not generative AI or a probability forecast.</small></section>';
 
-    h += '<section class="card"><div class="ch"><h3>Recommended executive plan</h3></div><p class="def" style="margin-top:-4px">No verified recommendation engine is configured</p><div>' +
+    h += '<section class="card"><div class="ch"><h3>Recommended executive plan</h3></div><div>' +
       PLAN.map(function (a, i) {
         return '<div class="aitem"><span class="no">' + (i + 1) + '</span><div><div class="t">' + esc(a.text) + '</div><small>' + esc(a.why) + ' · with <b>' + esc(a.owner) + '</b></small></div></div>';
-      }).join('') + '</div><div class="okbox">Action plans and assignment status are unavailable; no tasks were generated or sent.</div></section>';
+      }).join('') + '</div><button class="btn" type="button" disabled title="No verified assignment integration is configured">Assignment unavailable <span aria-hidden="true">→</span></button></section>';
 
     var pending = DECISIONS.length;
     h += '<section class="card"><div class="ch"><h3>Decisions awaiting approval</h3><span class="pill ' + (pending ? 'h' : 'n') + '">' + (DASHBOARD_DATA_AVAILABLE ? pending + ' pending' : 'Unavailable') + '</span></div>' +
@@ -1300,8 +1300,7 @@ export function initDashboard() {'use strict';
     if (S.pop === 'notif') n.insertAdjacentHTML('beforeend', '<button class="opt" data-markseen style="color:var(--accent);font-weight:600">' + (S.seen ? '✓ All seen' : 'Mark all as seen') + '</button>');
     document.querySelectorAll('#pop-cal .cal .has').forEach(function (el) { el.setAttribute('data-day', el.textContent); el.setAttribute('role', 'button'); el.tabIndex = 0; el.style.cursor = 'pointer'; });
   };
-  function stamp() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
-  function refreshNow(quiet) { document.querySelector('.updated').textContent = 'Last updated ' + stamp(); render(); if (S.drawer) renderDrawer(); if (!quiet) toast('Dashboard refreshed'); }
+  function refreshNow(quiet) { render(); if (S.drawer) renderDrawer(); if (!quiet) toast('Dashboard refreshed'); }
   function requestSourceSync(quiet) {
     var request = new Event('xone-sync-request', { cancelable: true });
     window.dispatchEvent(request);
@@ -1424,14 +1423,19 @@ export function initDashboard() {'use strict';
     if (updatedLabel) {
       var syncedAt = snapshot && snapshot.syncedAt ? new Date(snapshot.syncedAt) : null;
       updatedLabel.textContent = !jiraCurrent
-        ? (jiraState && jiraState.state === 'error' ? 'Jira sync failed · cached data hidden' :
-          jiraState && (jiraState.state === 'connected' || jiraState.state === 'partial') && !jiraFresh ? 'Jira data stale · cached data hidden' : 'Jira data unavailable')
+        ? (jiraState && jiraState.state === 'error' ? 'Unavailable' :
+          jiraState && (jiraState.state === 'connected' || jiraState.state === 'partial') && !jiraFresh ? 'Stale' : 'Unavailable')
         : syncedAt && !Number.isNaN(syncedAt.getTime())
-          ? (jiraState.state === 'partial' ? 'Partial Jira data · ' : 'Last updated ') + syncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          ? jiraState.state === 'partial'
+            ? 'Partial'
+            : 'Last updated ' + syncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : 'Not synced';
       updatedLabel.title = syncedAt && !Number.isNaN(syncedAt.getTime())
         ? (jiraCurrent ? 'Last successful Jira sync: ' : 'Last successful Jira sync (cached data not used): ') + syncedAt.toLocaleString() + (jiraState && jiraState.message ? '\n' + jiraState.message : '')
         : (jiraState && jiraState.message) || 'No successful Jira source sync has been recorded';
+      if (jiraState && jiraState.state === 'partial') {
+        updatedLabel.title += '\nJira data is partial.';
+      }
     }
     var today = new Date();
     TODAY = today;
