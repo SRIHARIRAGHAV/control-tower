@@ -98,7 +98,7 @@ export function initDashboard() {'use strict';
   // =====================================================================
   var S = {
     view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null, wkOpen: {},
-    drawer: null, page: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
+    drawer: null, page: null, open: null, dec: {}, nav: { dash: true }, chat: false,
     msgs: []
   };
   var DASHBOARD_DATA_AVAILABLE = false;
@@ -1110,11 +1110,11 @@ export function initDashboard() {'use strict';
     if ((a = t.getAttribute('data-act'))) {
       if (a === 'collapse') shell.classList.toggle('collapsed');
       if (a === 'menu') shell.classList.toggle('menu-open');
-      if (a === 'send') { S.sent = true; render(); toast('Plan sent to ' + PLAN.length + ' owners with due dates'); }
+      if (a === 'send') { toast('Plan sending is unavailable in this pilot; no notifications were sent.'); }
       if (a === 'chat') { S.chat = !S.chat; S.bubbleGone = true; renderChat(); if (S.chat) setTimeout(function () { var i = document.getElementById('chatin'); if (i) i.focus(); }, 0); }
       return;
     }
-    if ((a = t.getAttribute('data-decide'))) { S.dec[a] = t.getAttribute('data-v'); render(); toast(S.dec[a] === 'yes' ? 'Approved. The requester has been notified.' : 'Declined. The requester has been notified.'); return; }
+    if ((a = t.getAttribute('data-decide'))) { S.dec[a] = t.getAttribute('data-v'); render(); toast('Decision updated for this view only; no Jira update or requester notification was sent.'); return; }
     if ((a = t.getAttribute('data-undo'))) { delete S.dec[a]; render(); return; }
     if ((a = t.getAttribute('data-ask'))) { var p = PROMPTS[+a]; ask(p[0], p[1]()); return; }
     if ((a = t.getAttribute('data-wk'))) { S.wkOpen[a] = !S.wkOpen[a]; render(); return; }
@@ -1534,7 +1534,6 @@ export function initDashboard() {'use strict';
       u: RISKS.filter(function (issue) { return !issue.priorityKnown; }).length,
     };
     S.dec = {};
-    S.sent = false;
     var bubble = document.getElementById('bubble');
     if (bubble) bubble.textContent = !DASHBOARD_DATA_AVAILABLE
       ? 'Current Jira metrics are unavailable. Check source synchronization status.'
