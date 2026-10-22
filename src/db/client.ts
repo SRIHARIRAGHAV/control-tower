@@ -3,23 +3,20 @@ import type { RiskForecast } from '../forecast/risk-forecast';
 import type { SyncState, XoneSnapshot } from '../shared/types';
 import { scopedStorageKey } from './storage-keys';
 
-const snapshotEntity = kvs.entity<{ payload: XoneSnapshot; updatedAt: string }>('xone_snapshot');
-const statusEntity = kvs.entity<{ payload: SyncState; updatedAt: string }>('xone_sync_status');
-const forecastEntity = kvs.entity<{ payload: RiskForecast; updatedAt: string }>('xone_risk_forecast');
+const SNAPSHOT_KEY = 'xone_snapshot:latest';
+const STATUS_KEY = 'xone_sync_status:latest';
+const FORECAST_KEY = 'xone_risk_forecast:latest';
 
 export async function readSnapshot(accountId?: string): Promise<XoneSnapshot | null> {
-  const result = await snapshotEntity.get(scopedStorageKey('latest', accountId));
-  return result?.payload ?? null;
+  return (await kvs.get<XoneSnapshot>(scopedStorageKey(SNAPSHOT_KEY, accountId))) ?? null;
 }
 
 export async function readSyncState(accountId?: string): Promise<SyncState | null> {
-  const result = await statusEntity.get(scopedStorageKey('latest', accountId));
-  return result?.payload ?? null;
+  return (await kvs.get<SyncState>(scopedStorageKey(STATUS_KEY, accountId))) ?? null;
 }
 
 export async function readRiskForecast(accountId?: string): Promise<RiskForecast | null> {
-  const result = await forecastEntity.get(scopedStorageKey('latest', accountId));
-  return result?.payload ?? null;
+  return (await kvs.get<RiskForecast>(scopedStorageKey(FORECAST_KEY, accountId))) ?? null;
 }
 
 export async function writeSyncResult(
@@ -28,13 +25,12 @@ export async function writeSyncResult(
   forecast?: RiskForecast,
   accountId?: string,
 ): Promise<void> {
-  const latestKey = scopedStorageKey('latest', accountId);
   const writes = [
-    snapshotEntity.set(latestKey, { payload: snapshot, updatedAt: snapshot.syncedAt }),
-    statusEntity.set(latestKey, { payload: state, updatedAt: state.syncedAt ?? snapshot.syncedAt }),
+    kvs.set(scopedStorageKey(SNAPSHOT_KEY, accountId), snapshot),
+    kvs.set(scopedStorageKey(STATUS_KEY, accountId), state),
   ];
   if (forecast) {
-    writes.push(forecastEntity.set(latestKey, { payload: forecast, updatedAt: forecast.generatedAt }));
+    writes.push(kvs.set(scopedStorageKey(FORECAST_KEY, accountId), forecast));
   }
   await Promise.all(writes);
 }

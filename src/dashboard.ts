@@ -3,7 +3,6 @@ import { calculateDeliveryMetrics } from './metrics/delivery-metrics';
 import { isSourceFresh } from './shared/data-freshness';
 
 export function initDashboard() {'use strict';
-
   var TODAY = new Date();
   var LEVEL = { c: 'Critical', h: 'High risk', m: 'Moderate', n: 'Normal', u: 'Unrated' };
   var RANK = { c: 0, h: 1, m: 2, n: 3, u: 4 };
@@ -71,7 +70,8 @@ export function initDashboard() {'use strict';
 
   // Potential risks: not happening yet, expected within 30 days
   var POTENTIAL = [];
-
+  var executiveRiskPage = 0;
+  var executiveRiskTimer;
   // Pending too long: actions or decisions open for more than STUCK_DAYS. age = days open
   var PENDING = [];
 
@@ -96,7 +96,7 @@ export function initDashboard() {'use strict';
   // STATE + HELPERS
   // =====================================================================
   var S = {
-    view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null, wkOpen: {},
+    view: '30d', q: '', sev: { c: true, h: true, m: true }, types: { client: true, internal: true, cross: true }, pop: null,
     drawer: null, page: null, open: null, sent: false, dec: {}, nav: { dash: true }, chat: false,
     msgs: []
   };
@@ -317,10 +317,10 @@ export function initDashboard() {'use strict';
     h += '<button class="card click kpi k-' + sl + '" data-open="stuck"><div class="ch"><h3>Open issues · aging</h3>' + (DASHBOARD_DATA_AVAILABLE ? statusPill(sl) : '<span class="pill n">Unavailable</span>') + '</div>' +
       '<p class="def">Jira issues created over ' + STUCK_DAYS + ' days ago · age is not blocker duration</p>' +
       '<div class="big"><span class="n num" style="color:var(--' + (sl === 'c' ? 'crit' : 'high') + '-ink)">' + (DASHBOARD_DATA_AVAILABLE ? stuck.length : '—') + '</span><span class="what">aged · overdue ' + (DASHBOARD_DATA_AVAILABLE ? DELIVERY_METRICS.overdueOpenIssues : '—') + '</span></div>' +
-      '<div class="kviz ages" role="img" aria-label="How long each item has been open">' +
-        stuck.slice().sort(function (a, b) { return b.age - a.age; }).slice(0, 3).map(function (p) {
-          return '<div class="age" data-tip="' + esc(p.project + ': ' + p.risk) + '"><span class="an">' + esc(p.project) + '</span><span class="ab"><i style="width:' + Math.min(100, p.age / 28 * 100) + '%;background:' + (p.age > 14 ? 'var(--crit)' : 'var(--high)') + '"></i></span><b>' + p.age + 'd</b></div>';
-        }).join('') + '</div>' +
+      '<div class="kviz ages" role="region" aria-label="How long each Jira issue has been open">' +
+        (stuck.length ? stuck.slice().sort(function (a, b) { return b.age - a.age; }).map(function (p) {
+          return '<div class="age" data-tip="' + esc(p.project + ': ' + p.risk) + '"><span class="age-name"><b>' + esc(p.risk) + '</b><small>' + esc(p.project) + (p.owner ? ' · ' + esc(p.owner) : '') + '</small></span><span class="ab"><i style="width:' + Math.min(100, p.age / 28 * 100) + '%;background:' + (p.age > 14 ? 'var(--crit)' : 'var(--high)') + '"></i></span><b>' + p.age + 'd</b></div>';
+        }).join('') : '<div class="commitment-empty">' + (DASHBOARD_DATA_AVAILABLE ? 'No open Jira issues have exceeded the aging threshold' : 'Current Jira data is unavailable') + '</div>') + '</div>' +
       (oldest ? talkIfIgnored(oldest.owner, oldest.project, oldest.dueDate ? 'Due ' + oldest.dueDate : 'No due date recorded') : '') +
       '<div class="foot">' + (DASHBOARD_DATA_AVAILABLE
         ? 'Blocked issues: ' + DELIVERY_METRICS.blockedOpenIssues + ' · blocked-since age unavailable · missing priority: ' +
@@ -333,9 +333,11 @@ export function initDashboard() {'use strict';
     h += '<button class="card click kpi k-' + pl + '" data-open="potential"><div class="ch"><h3>Due commitments · next</h3>' + (DASHBOARD_DATA_AVAILABLE ? statusPill(pl) : '<span class="pill n">Unavailable</span>') + '</div>' +
       '<p class="def">Open Jira issues due within the next 30 days · not a forecast</p>' +
       '<div class="big"><span class="n num" style="color:var(--high-ink)">' + (DASHBOARD_DATA_AVAILABLE ? POTENTIAL.length : '—') + '</span><span class="what">in 30 days</span></div>' +
-      '<div class="kviz"><div class="strip" role="img" aria-label="Open Jira issues due over the next 30 days"><span class="now"></span>' +
-        POTENTIAL.map(function (p) { return '<span class="pt" style="left:' + (p.day / 30 * 100) + '%;background:' + FILL[p.lvl] + '" data-tip="' + esc(p.project + ': ' + p.risk + ' · ' + fmt(p.day)) + '"></span>'; }).join('') +
-      '</div><div class="strip-lbl"><span>Today</span><span>2 wk</span><span>30 d</span></div></div>' +
+      '<div class="kviz commitment-list" role="region" aria-label="Open Jira commitments due within 30 days">' +
+        (POTENTIAL.length ? POTENTIAL.map(function (p) {
+          return '<div class="commitment"><span class="commitment-date sev-' + p.lvl + '">' + esc(short(p.day)) + '</span><span class="commitment-main"><b>' + esc(p.risk) + '</b><small>' + esc(p.project) + (p.owner ? ' · ' + esc(p.owner) : '') + '</small></span><span class="commitment-severity sev-' + p.lvl + '">' + esc(LEVEL[p.lvl]) + '</span></div>';
+        }).join('') : '<div class="commitment-empty">' + (DASHBOARD_DATA_AVAILABLE ? 'No dated open Jira issues due in the next 30 days' : 'Current Jira data is unavailable') + '</div>') +
+      '</div>' +
       talkIfIgnored(
         potNext ? potNext.owner : 'No owner assigned',
         potNext ? potNext.project + ', ' + short(potNext.day) : '',
@@ -344,6 +346,7 @@ export function initDashboard() {'use strict';
       '<div class="foot">' + delta(V.pot[0], V.pot[1], true) + '</div></button>';
     h += '</section>';
 
+    h += renderExecutiveRiskCards();
     // ---- row 2: impact on the organisation — what kind of problem, what it hits, who it hurts ----
     h += impactSection();
 
@@ -359,6 +362,17 @@ export function initDashboard() {'use strict';
       var w = worst(list);
       var headN = count(list, w);
       var headTxt = w === 'c' ? 'critical risks' : w === 'h' ? 'high risks' : w === 'm' ? 'moderate risks' : 'risks';
+      var featuredRisks = list.slice().sort(bySev).slice(0, 3);
+      var featuredMarkup = featuredRisks.length
+        ? '<span class="dept-issues"><span class="dept-issues-title">Priority open issues</span>' +
+          featuredRisks.map(function (risk) {
+            return '<span class="dept-issue"><span class="dept-issue-main"><b>' +
+              esc(risk.risk || 'Unnamed Jira issue') + '</b><small>' +
+              esc(risk.project || 'Unknown project') + (risk.owner ? ' · ' + esc(risk.owner) : '') +
+              '</small></span><span class="dept-issue-severity ' + esc(risk.lvl) + '">' +
+              esc(LEVEL[risk.lvl] || 'Unrated') + '</span></span>';
+          }).join('') + '</span>'
+        : '<span class="dept-issues dept-issues-empty">No open issues match the current filters.</span>';
       var rows = ['c', 'h', 'm'].filter(function (l) { return l !== w; }).map(function (l) {
         var n = count(list, l); return n ? '<div><i style="background:' + FILL[l] + '"></i>' + LEVEL[l] + '<b>' + n + '</b></div>' : '';
       }).join('') + '<div><i style="background:' + FILL.n + '"></i>Normal<b>' + d.normal + '</b></div>';
@@ -370,6 +384,7 @@ export function initDashboard() {'use strict';
           var n = list.filter(function (r) { return r.type === t; }).length;
           return n ? tyChip(t, n + ' ' + TYPE_SHORT[t].toLowerCase()) : '';
         }).join('') + '</span>' +
+        featuredMarkup +
         (function () {
           var waits = RISKS.filter(function (r) { return r.type === 'cross' && r.to === d.name && matches(r); }).length;
           var holds = RISKS.filter(function (r) { return r.type === 'cross' && r.from === d.name && matches(r); }).length;
@@ -443,6 +458,101 @@ export function initDashboard() {'use strict';
   //   2. Clients affected: which clients are exposed, how much is at stake, what is next
   //   3. Between departments: which team is holding up which, and why
   // =====================================================================
+  function renderExecutiveRiskCards() {
+    var pageSize = 5;
+    var critical = criticalOpen().slice().sort(bySev);
+    var potential = POTENTIAL.slice().sort(function (a, b) {
+      return a.day - b.day || bySev(a, b);
+    });
+    var criticalPages = Math.max(1, Math.ceil(critical.length / pageSize));
+    var potentialPages = Math.max(1, Math.ceil(potential.length / pageSize));
+    var pageCount = Math.max(criticalPages, potentialPages);
+
+    executiveRiskPage %= pageCount;
+    if (!executiveRiskTimer) {
+      executiveRiskTimer = setInterval(function () {
+        var currentPageCount = Math.max(
+          1,
+          Math.ceil(criticalOpen().length / pageSize),
+          Math.ceil(POTENTIAL.length / pageSize)
+        );
+        if (currentPageCount > 1) {
+          executiveRiskPage = (executiveRiskPage + 1) % currentPageCount;
+          var currentGrid = app.querySelector('.exec-risk-grid');
+          if (currentGrid) {
+            var updatedCards = document.createElement('template');
+            updatedCards.innerHTML = renderExecutiveRiskCards();
+            var updatedGrid = updatedCards.content.querySelector('.exec-risk-grid');
+            if (updatedGrid) currentGrid.innerHTML = updatedGrid.innerHTML;
+          }
+        }
+      }, 5000);
+    }
+
+    function riskItems(items, page, isCritical) {
+      var start = page * pageSize;
+      var visible = items.slice(start, start + pageSize);
+      if (!visible.length) {
+        var emptyRows = '<li class="exec-risk-empty">' +
+          (!DASHBOARD_DATA_AVAILABLE
+            ? 'Unavailable: current Jira data is not available.'
+            : isCritical ? 'No open critical-priority Jira issues.' : 'No open issues due in the next 30 days.') +
+          '</li>';
+        for (var emptyIndex = 1; emptyIndex < pageSize; emptyIndex++) {
+          emptyRows += '<li class="exec-risk-placeholder" aria-hidden="true"></li>';
+        }
+        return emptyRows;
+      }
+      var rows = visible.map(function (risk, index) {
+        var department = String(risk.dept || '').trim();
+        var owner = String(risk.owner || '').trim();
+        var context = [department ? 'Department: ' + department : '', owner ? 'Owner: ' + owner : '']
+          .filter(Boolean).map(esc).join(' · ');
+        if (!context) context = 'Department and owner unavailable';
+        return '<li class="exec-risk-item">' +
+          '<div class="exec-risk-item-head">' +
+            '<span class="exec-risk-number ' + (isCritical ? 'c' : esc(risk.lvl || 'u')) + '">' + (start + index + 1) + '</span>' +
+            '<div class="exec-risk-name"><b>' + esc(risk.risk || 'Unnamed Jira issue') + '</b>' +
+              '<small>' + esc(risk.key || '') + ' · ' + esc(risk.project || 'Unknown project') + '</small></div>' +
+            '<span class="exec-risk-badge ' + (isCritical ? 'c' : esc(risk.lvl)) + '">' +
+              esc(LEVEL[risk.lvl] || 'Unrated') + '</span>' +
+          '</div>' +
+          '<div class="exec-risk-meta">' +
+            (isCritical
+              ? '<span>' + context + '</span><span>Age: ' + (risk.age === null ? '—' : esc(risk.age) + 'd') + '</span>'
+              : '<span>' + context + '</span><span>Due: ' + esc(fmt(risk.day)) + '</span>') +
+          '</div>' +
+        '</li>';
+      }).join('');
+      for (var index = visible.length; index < pageSize; index++) {
+        rows += '<li class="exec-risk-placeholder" aria-hidden="true"></li>';
+      }
+      return rows;
+    }
+
+    function card(title, items, page, pages, isCritical) {
+      var start = page * pageSize;
+      var end = Math.min(start + pageSize, items.length);
+      return '<article class="card exec-risk-card ' + (isCritical ? 'exec-critical' : 'exec-potential') + '">' +
+        '<header class="exec-risk-heading"><h3>' + title + '</h3>' +
+          '<span class="exec-risk-total">' + (DASHBOARD_DATA_AVAILABLE ? items.length : '—') + '</span></header>' +
+        '<ol class="exec-risk-list">' + riskItems(items, page, isCritical) + '</ol>' +
+        '<footer class="exec-risk-footer">' +
+          (!DASHBOARD_DATA_AVAILABLE ? 'Jira data unavailable' :
+            items.length ? 'Showing ' + (start + 1) + '–' + end + ' of ' + items.length : 'No matching risks') +
+          (pages > 1 ? ' · Group ' + (page + 1) + ' of ' + pages : '') +
+        '</footer>' +
+      '</article>';
+    }
+
+    var criticalPage = executiveRiskPage % criticalPages;
+    var potentialPage = executiveRiskPage % potentialPages;
+    return '<section class="exec-risk-grid" aria-label="Rotating risk cards">' +
+      card('Top 5 Critical Risks', critical, criticalPage, criticalPages, true) +
+      card('Potential Risks · Next 30 Days', potential, potentialPage, potentialPages, false) +
+    '</section>';
+  }
+
   function impactSection() {
     var classificationAvailable = DASHBOARD_DATA_AVAILABLE && !MISSING_JIRA_FIELDS.includes('Client') && !MISSING_JIRA_FIELDS.includes('Impacted department');
     var P = problems().filter(function (risk) { return risk.classificationKnown; }), types = ['client', 'internal', 'cross'];
@@ -562,14 +672,12 @@ export function initDashboard() {'use strict';
       if (w.overdue) list.sort(function (a, b) { return a.r.day - b.r.day; });
       h += '<div class="wk' + (i === 1 ? ' now' : '') + (w.overdue ? ' late' : '') + '"><div class="rail"><i></i></div>' +
         '<div class="head"><div class="when">' + w.when + '</div><div class="range">' + (w.overdue ? 'open over ' + STUCK_DAYS + ' days' : w.to > 900 ? 'after ' + short(90) : short(w.from) + ' – ' + short(w.to)) + '</div></div>' +
-        '<div class="cnt">' + (list.length ? list.length + (list.length === 1 ? ' item' : ' items') + (crit ? ' · ' + crit + ' critical' : '') : '') + '</div><div class="items">';
-      if (!list.length) h += '<div class="none">Nothing</div>';
-      var shown = S.wkOpen[i] ? list : list.slice(0, 3);
-      shown.forEach(function (x) {
+        '<div class="cnt">' + (list.length ? list.length + (list.length === 1 ? ' item' : ' items') + (crit ? ' · ' + crit + ' critical' : '') : '') + '</div><div class="items" role="region" aria-label="' + esc(w.when + ' timeline items') + '">';
+      if (!list.length) h += '<div class="none">' + (w.overdue ? 'No overdue Jira issues' : 'No dated commitments') + '</div>';
+      list.forEach(function (x) {
         h += '<button class="tk' + (x.pot ? ' pot' : '') + '" data-ev="' + x.r.id + '" style="--kc:' + FILL[x.r.lvl] + '" data-tip="' + esc(LEVEL[x.r.lvl] + ': ' + x.r.risk) + '">' +
           '<b>' + esc(x.r.project) + '</b><small>' + fmt(x.r.day) + '</small><span class="tt">' + (x.r.classificationKnown ? typeTag(x.r) : '') + '</span></button>';
       });
-      if (list.length > 3) h += '<button class="more" data-wk="' + i + '">' + (S.wkOpen[i] ? 'Show less' : '+' + (list.length - 3) + ' more') + '</button>';
       h += '</div></div>';
     });
     return h + '</div>';
@@ -774,7 +882,22 @@ export function initDashboard() {'use strict';
     var body = document.body, side = document.querySelector('.side');
     var shellEl = document.getElementById('shell');
     body.style.zoom = 1; body.style.width = ''; body.style.margin = ''; side.style.height = ''; shellEl.style.minHeight = '';
-    body.classList.remove('big');
+    body.classList.remove('big', 'tv-mode');
+    if (innerWidth >= 1400 && innerHeight >= 800 && app.querySelector('.deck')) {
+      body.classList.add('tv-mode');
+      document.documentElement.style.setProperty('--tv-topbar-height', document.querySelector('.top').offsetHeight + 'px');
+      if (!presentationTimer) {
+        presentationTimer = setInterval(function () {
+          if (!S.chat && !S.drawer) goSlide(((S.slide || 0) + 1) % SLIDES.length);
+        }, 20000);
+      }
+      Z = 1;
+      alignNames();
+      return;
+    }
+    clearInterval(presentationTimer);
+    presentationTimer = undefined;
+    document.documentElement.style.removeProperty('--tv-topbar-height');
     if (innerWidth < 1800) { Z = 1; alignNames(); return; }
     body.classList.add('big');
     // Scale the page up for big screens. Then, if the whole dashboard can fit on one screen
@@ -1025,10 +1148,11 @@ export function initDashboard() {'use strict';
   // =====================================================================
   // SWIPE LAYOUT (add-on). Runs after every render(): it only MOVES the cards render() already built
   // into two slides, so markup, classes, click handlers and data bindings stay exactly as they were.
-  //   Slide 1 "COO priorities"          verdict · 5 KPI cards · plan + decisions · AI summary · COO risk areas
+  //   Slide 1 "COO priorities"          verdict · 5 KPI cards · rotating risks · AI summary and COO actions
   //   Slide 2 "Organisation & timeline" impact on the organisation · departments · timeline
   // =====================================================================
   var SLIDES = ['COO priorities', 'Organisation & timeline'];
+  var presentationTimer;
   function mk(tag, cls) { var n = document.createElement(tag); n.className = cls; return n; }
   // SWIPE LAYOUT v2 - replaces the old slideify(). Cards are only MOVED (or one removed), never rebuilt.
   //   Slide 1 "COO priorities":  verdict | 4-5 KPI cards | Impact on the organisation (What the problems hit,
@@ -1049,12 +1173,12 @@ export function initDashboard() {'use strict';
     if (commits) commits.remove();                                   // 1. remove Recent Bitbucket commits
     if (plan && ai) ai.after(plan);                                  // 2. plan sits under the AI summary, same narrow width
     var s1 = mk('div', 'page slide s1'), s2 = mk('div', 'page slide s2'), m1 = mk('div', 'maincol'), m2 = mk('div', 'maincol'), pair = mk('div', 'pair');
-    [].slice.call(main.children).forEach(function (n) {              // 3. impact section (header + 3 cards) goes to slide 1
-      (n.matches('.verdict,.kpis,.imp') || n.id === 'sec-impact' ? m1 : m2).appendChild(n);
+    [].slice.call(main.children).forEach(function (n) {
+      (n.matches('.verdict,.kpis,.exec-risk-grid') ? m1 : m2).appendChild(n);
     });
-    if (unassigned) pair.appendChild(unassigned);                    // 4. Department not assigned ...
-    if (decisions) pair.appendChild(decisions);                      //    ... next to the COO approvals card
-    if (pair.children.length) m1.appendChild(pair);
+    if (unassigned) pair.appendChild(unassigned);
+    if (decisions) pair.appendChild(decisions);
+    if (pair.children.length) m2.appendChild(pair);
     s1.appendChild(m1); s1.appendChild(rail); s2.appendChild(m2);
     var deck = mk('div', 'deck'); deck.appendChild(s1); deck.appendChild(s2);
     app.innerHTML = ''; app.classList.add('swipe'); app.appendChild(deck);
@@ -1113,10 +1237,18 @@ export function initDashboard() {'use strict';
       if (a === 'chat') { S.chat = !S.chat; S.bubbleGone = true; renderChat(); if (S.chat) setTimeout(function () { var i = document.getElementById('chatin'); if (i) i.focus(); }, 0); }
       return;
     }
+    if (t.hasAttribute('data-bubble-dismiss')) { S.bubbleGone = true; renderChat(); return; }
+    if ((a = t.getAttribute('data-bubble-ask'))) {
+      var prompt = PROMPTS[+a];
+      S.bubbleGone = true;
+      S.chat = true;
+      ask(prompt[0], prompt[1]());
+      setTimeout(function () { var input = document.getElementById('chatin'); if (input) input.focus(); }, 0);
+      return;
+    }
     if ((a = t.getAttribute('data-decide'))) { S.dec[a] = t.getAttribute('data-v'); render(); toast(S.dec[a] === 'yes' ? 'Approved. The requester has been notified.' : 'Declined. The requester has been notified.'); return; }
     if ((a = t.getAttribute('data-undo'))) { delete S.dec[a]; render(); return; }
     if ((a = t.getAttribute('data-ask'))) { var p = PROMPTS[+a]; ask(p[0], p[1]()); return; }
-    if ((a = t.getAttribute('data-wk'))) { S.wkOpen[a] = !S.wkOpen[a]; render(); return; }
     if ((a = t.getAttribute('data-dept'))) { S.drawer = { type: 'dept', dept: a }; S.open = null; renderDrawer(); return; }
     if ((a = t.getAttribute('data-coo'))) { openCoo(a); return; }   // COO risk intelligence hook
     if ((a = t.getAttribute('data-open'))) { S.drawer = { type: a }; S.open = null; renderDrawer(); return; }
@@ -1576,11 +1708,11 @@ export function initDashboard() {'use strict';
     };
     S.dec = {};
     S.sent = false;
-    var bubble = document.getElementById('bubble');
-    if (bubble) bubble.textContent = !DASHBOARD_DATA_AVAILABLE
+    var bubbleText = document.getElementById('bubble-text');
+    if (bubbleText) bubbleText.textContent = !DASHBOARD_DATA_AVAILABLE
       ? 'Current Jira metrics are unavailable. Check source synchronization status.'
       : RISKS.length
-      ? criticalOpen().length + ' critical risks need action. Ask me for a briefing.'
+      ? criticalOpen().length + ' critical risks need attention. Want a quick evidence-based briefing?'
       : 'Jira synchronized successfully; no issues were returned.';
     S.sev = { c: true, h: true, m: true, n: true };
     S.types = { client: true, internal: true, cross: true };
@@ -1620,6 +1752,6 @@ export function initDashboard() {'use strict';
   TODAY = new Date();
   DELIVERY_METRICS = calculateDeliveryMetrics([], TODAY);
   renderNav(); renderPops(); render(); renderChat();
-  setTimeout(function () { S.bubbleGone = true; renderChat(); }, 7000);
+  setTimeout(function () { S.bubbleGone = true; renderChat(); }, 12000);
   fit();
 }

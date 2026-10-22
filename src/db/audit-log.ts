@@ -9,11 +9,6 @@ export interface AuditRecord {
   outcome: 'success' | 'failure';
 }
 
-const auditEntity = kvs.entity<{ payload: AuditRecord; updatedAt: string }>('xone_audit_log');
-
 export async function recordWriteAttempt(record: AuditRecord): Promise<void> {
-  await auditEntity.set(`${record.timestamp}:${randomUUID()}`, {
-    payload: record,
-    updatedAt: record.timestamp,
-  });
+  await kvs.set(`xone_audit_log:${record.timestamp}:${randomUUID()}`, record);
 }

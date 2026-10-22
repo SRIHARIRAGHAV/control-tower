@@ -51,7 +51,13 @@
 </div>
 
 <div class="agent" id="agent">
-  <span class="bubble" id="bubble">4 critical risks need action. Ask me for a briefing.</span>
+  <div class="bubble" id="bubble" role="status" aria-live="polite">
+    <span id="bubble-text">Checking current Jira risks…</span>
+    <span class="bubble-actions">
+      <button type="button" class="bubble-ask" data-bubble-ask="1">Brief me</button>
+      <button type="button" class="bubble-dismiss" data-bubble-dismiss aria-label="Dismiss AI message">×</button>
+    </span>
+  </div>
   <button class="fab" data-act="chat" aria-label="Open AI agent">AI</button>
 </div>
 <div id="chatbox"></div>

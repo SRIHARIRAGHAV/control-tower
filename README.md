@@ -1,25 +1,29 @@
 # Control Tower dashboard (interactive)
 
-## Local development and demo mode
+## Development and live integrations
 
     npm ci
     npm run dev
 
-Open http://localhost:5173. Vite development mode uses **clearly labelled synthetic demo fixtures** by default, so the dashboard can be demonstrated without an Atlassian session or credentials. The fixtures are not live company data and must never be used for business decisions. The Sync button refreshes the local fixture response; it does not call Jira, Confluence, or Bitbucket.
+Standalone Vite mode does not provide a Forge runtime or Atlassian authentication. It will not display sample or synthetic company data; source data and sync actions require the Forge bridge. For real Jira, Confluence, and Bitbucket data, deploy and install the app and open it in its Jira context. For local Forge development, run `npm run forge:tunnel` and open the tunneled app in Jira.
 
-To turn off local demo mode, set `VITE_DEMO_MODE=false` in your local environment and run the app inside the configured Forge context. The live connectors use Forge APIs and are not a standalone local REST integration. Local Vite mode cannot validate Atlassian authentication, Forge storage, scheduled triggers, or provider scopes.
+Local Vite mode is useful for frontend builds, but cannot validate Atlassian authentication, Forge storage, scheduled triggers, or provider scopes.
 
 Run `npm run build` to type-check and build the Forge static resource into `forge-dist/`. Run `npm test` for freshness, metric, and deterministic forecast tests.
 
 ## Live-data scope and metric rules
 
-The live dashboard starts with no sample company data. It uses the latest Jira
+The dashboard uses the latest Jira
 snapshot only when the latest Jira sync succeeded; if Jira sync fails, cached
 issues are hidden from current metrics and the previous successful sync time
 remains available in the source-status details. Data older than two hours is
 also marked stale and excluded from current metrics. A Jira source can be marked
 partial when named custom fields are not configured. Source status includes
 record counts, sync errors, timestamps, and the missing Jira fields.
+The backend stores its latest snapshot, sync state, and forecast as JSON values
+in Forge KVS; it does not require custom entity schemas. After upgrading from
+the previous custom-entity storage format, run a sync to populate the new
+storage keys; existing custom-entity records are not migrated.
 
 Current Jira calculations use these rules:
 
@@ -60,6 +64,15 @@ The deployment builds the React dashboard first and packages it with the Forge
 resolvers and Jira/Confluence/Bitbucket sync handlers. `npm run forge:install`
 is for installing the app on a Jira site after the first deployment.
 
+Jira and Confluence use the app's Forge scopes. Bitbucket sync additionally
+requires encrypted Forge variables `BITBUCKET_WORKSPACE`,
+`BITBUCKET_OAUTH_CLIENT_ID`, and `BITBUCKET_OAUTH_CLIENT_SECRET`, and a
+Bitbucket OAuth consumer with repository-read permission. Configure credentials
+in the Forge environment; do not put them in `.env`, frontend variables, or
+committed files. The Sync control fetches provider data through the backend
+connectors and reports each source's connected, partial, missing-configuration,
+or error status independently.
+
 ## Access-control configuration
 
 The Forge resolver context is the only source of the current account ID; the
@@ -75,8 +88,8 @@ The Forge app must be deployed and installed by a Forge administrator. This
 does not bypass the Jira site's normal sign-in, site access, project
 permissions, or app availability policies. Configure `JIRA_PROJECT_KEY` in
 Forge for scheduled app-context Jira sync; it is never accepted from a browser
-request. Local demo mode is synthetic and does not exercise Forge
-authentication or Jira permissions.
+request. Standalone Vite mode does not exercise Forge authentication or Jira
+permissions.
 
 On first open, the app attempts a sync. If every source failed previously, it
 tries again the next time the app opens. Jira and Confluence use the current

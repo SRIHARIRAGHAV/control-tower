@@ -2,32 +2,6 @@ app:
   id: ari:cloud:ecosystem::app/76cb3871-fafd-4382-a2a3-92b803bc96ed
   runtime:
     name: nodejs22.x
-  storage:
-    entities:
-      - name: xone_snapshot
-        attributes:
-          payload:
-            type: any
-          updatedAt:
-            type: string
-      - name: xone_sync_status
-        attributes:
-          payload:
-            type: any
-          updatedAt:
-            type: string
-      - name: xone_risk_forecast
-        attributes:
-          payload:
-            type: any
-          updatedAt:
-            type: string
-      - name: xone_audit_log
-        attributes:
-          payload:
-            type: any
-          updatedAt:
-            type: string
 modules:
   jira:globalPage:
     - key: xone-risk-intelligence

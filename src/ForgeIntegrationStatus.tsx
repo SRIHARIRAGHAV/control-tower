@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { DashboardDataResponse } from './shared/types';
 import { isSourceFresh } from './shared/data-freshness';
 import { shouldRunInitialSync } from './shared/initial-sync';
-import { getDashboardData, isLocalDemoMode, syncNow } from './frontend/services/forge-api';
+import { getDashboardData, syncNow } from './frontend/services/forge-api';
 
 function publishDashboardData(data: DashboardDataResponse) {
   window.dispatchEvent(new CustomEvent('xone-source-data', { detail: data }));
@@ -142,7 +142,6 @@ export default function ForgeIntegrationStatus({ canSync }: { canSync: boolean }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-      {isLocalDemoMode() && <span style={{ border: '1px solid #d97706', color: '#92400e', background: '#fffbeb', borderRadius: 6, padding: '3px 6px', fontWeight: 700, whiteSpace: 'nowrap' }}>LOCAL DEMO · SYNTHETIC DATA</span>}
       <span role="status" aria-live="polite" title={sourceStatusDetails}>
         {statusText}
       </span>
